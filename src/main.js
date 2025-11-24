@@ -1,4 +1,5 @@
-import './assets/main.css'
+import "./assets/style/base.css";
+
 
 import { createApp } from 'vue'
 import { VueFire, VueFireAuth } from 'vuefire'

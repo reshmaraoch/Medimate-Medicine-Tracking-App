@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { saveMeds } from '@/firebase/firebase_service.js'
 
 const showConfirm = ref(false)
@@ -37,10 +37,25 @@ const saveMedicationToDB = async () => {
     alert('Error saving medication.')
   }
 }
+
+const courseLength = computed(() => {
+    if(!form.value.startDate || !form.value.endDate)
+        return null;
+
+        const start = new Date(form.value.startDate);
+        const end = new Date(form.value.endDate);
+
+        const diff = (end - start) / (1000 * 60 * 60 * 24);
+
+        return diff >= 0 ? diff + 1 : null;
+})
+const openDatePicker = (event) => {
+  event.target.showPicker?.();
+};
 </script>
 
 <template>
-  <div class="add-medicine-container">
+  <div class="add_medicine-container">
     <!-- HEADER -->
     <header class="header-section">
       <h1>Add A Medication to Track</h1>
@@ -103,14 +118,18 @@ const saveMedicationToDB = async () => {
         <div class="form-group-row">
           <div class="form-group half">
             <label>Start Date *</label>
-            <input v-model="form.startDate" type="date" required />
+            <input v-model="form.startDate" type="date" @click="openDatePicker"/>
           </div>
 
           <div class="form-group half">
             <label>End Date</label>
-            <input v-model="form.endDate" type="date" />
+            <input v-model="form.endDate" type="date" @click="openDatePicker" />
           </div>
         </div>
+        
+          <p v-if="courseLength" class="course-info">
+            Your course of medication is: <strong>{{ courseLength }}</strong> days
+          </p>
 
         <div class="form-group">
           <label>Available Stock</label>
@@ -119,7 +138,7 @@ const saveMedicationToDB = async () => {
 
         <div class="form-group">
           <label>Expiry Date</label>
-          <input v-model="form.expiryDate" type="date" />
+          <input v-model="form.expiryDate" type="date" @click="openDatePicker" />
         </div>
 
         <button type="submit" class="submit-button">Add Medication Details</button>
@@ -138,7 +157,9 @@ const saveMedicationToDB = async () => {
           <li><strong>Type:</strong> {{ form.medicineType }}</li>
           <li><strong>Schedule:</strong> {{ form.schedule }}</li>
           <li><strong>Time:</strong> {{ form.time || '—' }}</li>
-          <li><strong>Duration:</strong> {{ form.startDate }} → {{ form.endDate || '—' }}</li>
+          <li v-if="courseLength"><strong>Duration:</strong> {{ form.startDate }} → {{ form.endDate || '—' }} (<strong>{{ courseLength }}</strong> days)</li>
+          <!-- <li v-if="courseLength">Your course of medication is: <strong>{{ courseLength }}</strong> days</li> -->
+
           <li><strong>Stock:</strong> {{ form.stock || '—' }}</li>
           <li><strong>Expiry:</strong> {{ form.expiryDate || '—' }}</li>
         </ul>
@@ -154,7 +175,7 @@ const saveMedicationToDB = async () => {
 
 <style scoped>
 /* Layout */
-.add-medicine-container {
+.add_medicine-container {
   max-width: 900px;
   margin: auto;
   padding: 20px;
@@ -191,7 +212,9 @@ const saveMedicationToDB = async () => {
 
 /* Form box */
 .form-wrapper {
-  background: #f7f7f7;
+   background: var(--color-card);
+  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-lg);
   padding: 30px;
   border-radius: 10px;
   border: 1px solid #ddd;
@@ -232,9 +255,17 @@ const saveMedicationToDB = async () => {
   width: 100%;
 }
 
+.course-info {
+  font-size: 14px;
+  margin-top: -6px;
+  color: var(--color-subtle-text);
+}
+
+
+
 .submit-button {
-  background: #2563eb;
-  color: white;
+background: var(--color-primary);
+  border-radius: var(--radius-pill);  color: white;
   padding: 12px;
   border: none;
   border-radius: 6px;
@@ -242,7 +273,7 @@ const saveMedicationToDB = async () => {
 }
 
 .submit-button:hover {
-  background: #1d4ed8;
+  background: var(--color-primary-hover);
 }
 
 /* Modal */
@@ -257,6 +288,7 @@ const saveMedicationToDB = async () => {
 
 .modal-box {
   background: white;
+  color:  var(--color-text-white-bg);
   padding: 24px;
   width: 90%;
   max-width: 500px;
@@ -303,5 +335,11 @@ const saveMedicationToDB = async () => {
 
 .modal-save:hover {
   background: #1e3fa8;
+}
+
+@media (max-width: 480px) {
+  .form-group-row {
+    flex-direction: column;
+  }
 }
 </style>
