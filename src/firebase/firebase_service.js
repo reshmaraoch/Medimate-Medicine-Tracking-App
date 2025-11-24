@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDoc, getDocs, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "@/firebase_conf";
 
 const getUserID = () => {
@@ -42,4 +42,15 @@ export const updateMeds = async (id, data) => {
     })
 }
 
+export const getMedsById = async (id) => {
+    const uid = auth.currentUser?.uid;
+    if(!uid) throw Error("User not logged in");
+
+    const docRef = doc(db, "users", uid, "medications", id);
+    const snapshot = await getDoc(docRef);
+
+    if(!snapshot.exists()) throw Error("Medication not found");
+
+    return {id: snapshot.id, ...snapshot.data()};   
+}
 

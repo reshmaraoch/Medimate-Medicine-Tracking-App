@@ -26,6 +26,7 @@ document.documentElement.setAttribute("data-theme", theme.value);
       <li @click="$router.push('/about')">About</li>
       <li @click="$router.push('/add_medicine')">Add Medicine</li>
       <li @click="$router.push('/contact')">Contact</li>
+      <li @click="$router.push('/view-meds')">Medications</li>
 
 
       <!-- <RouterLink to="/">Home</RouterLink> 
@@ -48,7 +49,7 @@ document.documentElement.setAttribute("data-theme", theme.value);
   padding: 0 30px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-around;
   background: var(--color-card);
   box-shadow: var(--shadow-soft);
 }

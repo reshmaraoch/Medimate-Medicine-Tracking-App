@@ -40,6 +40,17 @@ const router = createRouter({
       name: 'AddMedicine',
       component: AddMedicine,
     },
+    {
+       path: "/edit-medicine/:id",
+       name: "EditMedicine",
+       component: () => import("@/views/EditMedicine.vue"),
+       props: true
+    },
+    {
+      path: "/view-meds",
+      name: "ViewMedications",
+      component: () => import("../views/ViewMedications.vue")
+    }
   ],
 })
 
