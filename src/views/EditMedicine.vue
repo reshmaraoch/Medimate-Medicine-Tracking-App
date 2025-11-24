@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { updateMeds, getMedsById } from '@/firebase/firebase_service.js'
+import { updateMeds, getMedsById} from '@/firebase/firebase_service.js'
 
 const route = useRoute();
 const router = useRouter();

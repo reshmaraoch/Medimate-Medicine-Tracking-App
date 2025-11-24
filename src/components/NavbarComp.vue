@@ -22,10 +22,13 @@ document.documentElement.setAttribute("data-theme", theme.value);
     </div>
 
     <ul class="nav-links">
+      
       <li @click="$router.push('/')">Home</li>
+      <!-- 
       <li @click="$router.push('/about')">About</li>
-      <li @click="$router.push('/add_medicine')">Add Medicine</li>
       <li @click="$router.push('/contact')">Contact</li>
+      --->
+      <li @click="$router.push('/add_medicine')">Add Medicine</li>
       <li @click="$router.push('/view-meds')">Medications</li>
 
 

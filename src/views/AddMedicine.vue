@@ -2,6 +2,7 @@
 import { ref, computed } from "vue";
 import Tesseract from "tesseract.js";
 import { saveMeds } from "@/firebase/firebase_service.js";
+import router from "@/router";
 
 // ---------- FORM STATE ----------
 const form = ref({
@@ -253,6 +254,7 @@ const saveMedicationToDB = async () => {
     showConfirm.value = false;
     Object.keys(form.value).forEach((k) => (form.value[k] = ""));
     form.value.schedule = "Everyday";
+    router.push('/view-meds')
   } catch (err) {
     console.error(err);
     alert("There was an error saving the medication.");

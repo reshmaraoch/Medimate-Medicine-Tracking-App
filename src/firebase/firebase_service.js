@@ -1,4 +1,4 @@
-import { collection, addDoc, getDoc, getDocs, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDoc, getDocs, doc, updateDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db, auth } from "@/firebase_conf";
 
 const getUserID = () => {
@@ -46,11 +46,25 @@ export const getMedsById = async (id) => {
     const uid = auth.currentUser?.uid;
     if(!uid) throw Error("User not logged in");
 
-    const docRef = doc(db, "users", uid, "medications", id);
+    const docRef = doc(db, "users", uid, "medication", id);
     const snapshot = await getDoc(docRef);
-
     if(!snapshot.exists()) throw Error("Medication not found");
 
     return {id: snapshot.id, ...snapshot.data()};   
+}
+
+export const deleteMedById = async (id) => {
+    const uid = auth.currentUser?.uid
+    if(!uid) throw Error("User is not logged in")
+
+    try{
+        const docRef = doc(db, "users", uid, "medication", id);
+        await deleteDoc(docRef);
+        return { success: true };
+    } catch (err) {
+        console.error("Could not delete medicine", err)
+        return { success: false, error: err };
+    }
+
 }
 

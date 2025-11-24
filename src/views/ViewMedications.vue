@@ -2,13 +2,14 @@
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { getAllMeds } from "@/firebase/firebase_service.js";
+import { deleteMedById } from "@/firebase/firebase_service.js";
 
 const medications = ref([]);
 const router = useRouter();
 
-onMounted(async () => {
+const loadMeds = async () => {
   medications.value = await getAllMeds();
-});
+};
 
 const goToEdit = (id) => {
   router.push(`/edit-medicine/${id}`);
@@ -17,6 +18,19 @@ const goToEdit = (id) => {
 const goToAdd = () => {
   router.push("/add_medicine");
 };
+
+const deleteMedication = async (medId) => {
+  try {
+    await deleteMedById(medId)
+    alert("Medication deletion was successful")
+    await loadMeds()
+  } catch (error) {
+    console.log(error)
+    alert("Deletion Failed")
+  }
+}
+
+onMounted(loadMeds)
 </script>
 
 
@@ -36,6 +50,7 @@ const goToAdd = () => {
             <th>End</th>
             <th>Stock</th>
             <th>Edit</th>
+            <th>Delete</th>
           </tr>
         </thead>
 
@@ -51,6 +66,11 @@ const goToAdd = () => {
             <td>
               <button class="edit-btn" @click="goToEdit(med.id)">
                 Edit
+              </button>
+            </td>
+            <td>
+              <button class="delete-btn" @click="deleteMedication(med.id)">
+                Delete
               </button>
             </td>
           </tr>
@@ -120,8 +140,21 @@ const goToAdd = () => {
   border-radius: var(--radius-pill);
   cursor: pointer;
 }
+
+.delete-btn {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
 .edit-btn:hover {
   background: var(--color-primary-hover);
+}
+
+.delete-btn:hover {
+  background: rgb(141, 37, 37);
 }
 
 .add-btn {
