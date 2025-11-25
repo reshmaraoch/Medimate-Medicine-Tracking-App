@@ -635,6 +635,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border: none;
   font-size: 14px;
   cursor: pointer;
+  margin: 2px;
 }
 
 .btn-secondary {

@@ -7,6 +7,17 @@ import { deleteMedById } from "@/firebase/firebase_service.js";
 const medications = ref([]);
 const router = useRouter();
 
+
+const showConfirm = ref(false);
+const medToDeleteId = ref("")
+const medToDeleteName = ref("")
+
+const showConfirmation = async (id, name)=> {
+  showConfirm.value = !showConfirm.value
+  medToDeleteId.value = id
+  medToDeleteName.value = name
+}
+
 const loadMeds = async () => {
   medications.value = await getAllMeds();
 };
@@ -19,11 +30,11 @@ const goToAdd = () => {
   router.push("/add_medicine");
 };
 
-const deleteMedication = async (medId) => {
+const deleteMedication = async () => {
   try {
-    await deleteMedById(medId)
-    alert("Medication deletion was successful")
+    await deleteMedById(medToDeleteId.value)
     await loadMeds()
+    showConfirm.value = !showConfirm.value
   } catch (error) {
     console.log(error)
     alert("Deletion Failed")
@@ -69,13 +80,28 @@ onMounted(loadMeds)
               </button>
             </td>
             <td>
-              <button class="delete-btn" @click="deleteMedication(med.id)">
+              <button class="delete-btn" @click="showConfirmation(med.id, med.medicineName)">
                 Delete
               </button>
             </td>
           </tr>
         </tbody>
+
+
       </table>
+
+      <div v-if="showConfirm" class="modal-backdrop">
+        <div class="modal-card">
+          <h2>Are you sure you want to delete "{{ medToDeleteName }}"?</h2>
+
+          <div class="modal-actions">
+            <button class="btn-secondary" @click="showConfirm = false">No</button>
+            <button class="btn-primary" @click="deleteMedication">
+              Yes
+            </button>
+          </div>
+        </div>
+      </div>
 
       <p v-else class="empty-text">
         You have no medications yet.
@@ -176,5 +202,55 @@ onMounted(loadMeds)
   text-align: center;
   margin: 20px 0;
   color: var(--color-subtle-text);
+}
+
+.modal-card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  padding: 20px 18px;
+  width: 95%;
+  max-width: 480px;
+  box-shadow: var(--shadow-medium);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-secondary,
+.btn-primary {
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+.btn-secondary:hover {
+  background: #d1d5db;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+.btn-primary:hover {
+  background: var(--color-primary-hover);
 }
 </style>
