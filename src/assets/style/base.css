@@ -1,49 +1,98 @@
 /* ---------------------------- */
 /* THEME 2 — PHARMA MINT        */
+/* Global light + dark mode     */
 /* ---------------------------- */
 
-:root{
---color-bg: #faf7f2;
+:root {
+  /* Backgrounds */
+  --color-bg: #faf7f2;
   --color-card: #ffffff;
+
+  /* Text */
   --color-text: #3b3a36;
   --color-subtle-text: #67635c;
+
+  /* Borders */
   --color-border: #e1ddd7;
 
+  /* Buttons + Accents */
   --color-primary: #8baa91;
   --color-primary-hover: #788f7e;
+  --color-primary-dark: #6f8b74; /* used for “unsaved changes” */
+  --color-button-dark: #2b3d2e;
 
   --color-accent: #4f634a;
 
+  /* Shadows */
   --shadow-soft: 0 2px 6px rgba(79, 99, 74, 0.12);
   --shadow-medium: 0 6px 20px rgba(79, 99, 74, 0.18);
 
+  /* Radii */
   --radius-sm: 6px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-pill: 999px;
 
+  /* Layout widths */
   --card-width: 780px;
   --modal-width: 480px;
 
   --font-main: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI";
 }
 
+/* --------------------------------------- */
+/* MANUAL DARK MODE (data-theme="dark")    */
+/* --------------------------------------- */
+
 [data-theme="dark"] {
- --color-bg: #0d1410;
+  --color-bg: #0d1410;
   --color-card: #1a241c;
+
   --color-text: #f2fff4;
   --color-subtle-text: #acc7b4;
+
   --color-border: #2d3c30;
 
   --color-primary: #a3c7a6;
   --color-primary-hover: #93b997;
+  --color-primary-dark: #8bb191;
+  --color-button-dark: #8bb191;
+
+  --color-accent: #d7f1db;
 
   --shadow-soft: 0 2px 8px rgba(163, 199, 166, 0.08);
   --shadow-medium: 0 6px 22px rgba(163, 199, 166, 0.14);
 }
 
+/* -------------------------------------------- */
+/* AUTO DARK MODE (when user system is dark)    */
+/* -------------------------------------------- */
 
-/* Global resets and base */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #0d1410;
+    --color-card: #1a241c;
+
+    --color-text: #f2fff4;
+    --color-subtle-text: #acc7b4;
+
+    --color-border: #2d3c30;
+
+    --color-primary: #a3c7a6;
+    --color-primary-hover: #93b997;
+    --color-primary-dark: #8bb191;
+
+    --color-accent: #d7f1db;
+
+    --shadow-soft: 0 2px 8px rgba(163, 199, 166, 0.08);
+    --shadow-medium: 0 6px 22px rgba(163, 199, 166, 0.14);
+  }
+}
+
+/* ---------------------------- */
+/* BASE/RESET STYLES           */
+/* ---------------------------- */
+
 * {
   box-sizing: border-box;
   font-family: var(--font-main);
@@ -53,46 +102,20 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
+  transition: background-color 0.30s ease, color 0.30s ease;
 }
 
-/* Smooth transitions */
 button,
 input,
 select {
   transition: all 0.15s ease;
+  font-family: var(--font-main);
 }
 
-/* *,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  font-weight: normal;
+/* Default card class for global use */
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
 }
-
-body {
-  min-height: 100vh;
-  color: var(--color-text);
-  background: var(--color-background);
-  transition:
-    color 0.5s,
-    background-color 0.5s;
-  line-height: 1.6;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
-  font-size: 15px;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-} */

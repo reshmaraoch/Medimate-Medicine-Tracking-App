@@ -8,7 +8,7 @@
       <li>Download</li>
     </ul>
 
-    <p class="address">1717 Harrison St, San Francisco, CA 94103</p>
+    <p class="address">Team Four loop, Minneapolis, MN 55455</p>
     <p class="copyright">© 2025 MediMate — All rights reserved.</p>
   </footer>
 </template>

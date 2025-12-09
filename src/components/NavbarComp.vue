@@ -28,6 +28,7 @@ document.documentElement.setAttribute("data-theme", theme.value);
       <li @click="$router.push('/about')">About</li>
       <li @click="$router.push('/contact')">Contact</li>
       --->
+      <li @click="$router.push('/profile')">Profile and Preferences</li>
       <li @click="$router.push('/add_medicine')">Add Medicine</li>
       <li @click="$router.push('/view-meds')">Medications</li>
 
