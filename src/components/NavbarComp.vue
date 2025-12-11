@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from "vue";
-import AuthComp from "./authComp.vue";
+import ProfileComp from "./ProfileComp.vue";
 
 const theme = ref(localStorage.getItem("theme") || "light");
 
@@ -43,7 +43,7 @@ document.documentElement.setAttribute("data-theme", theme.value);
     <button class="theme-toggle" @click="toggleTheme">
       {{ theme === 'light' ? '🌙' : '☀️' }}
     </button>
-    <AuthComp />
+    <ProfileComp />
   </nav>
 </template>
 

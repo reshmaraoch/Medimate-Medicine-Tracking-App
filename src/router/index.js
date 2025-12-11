@@ -3,6 +3,9 @@ import HomeView from '../views/HomeView.vue'
 import TestView from '../views/TestView.vue'
 import FunView from '../views/FunView.vue'
 import AddMedicine from '@/views/AddMedicine.vue'
+import StocksView from '@/views/StocksView.vue'
+import AchievementsView from '@/views/AchievementsView.vue'
+import SavedPharmacyInfo from '@/views/SavedPharmacyInfo.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -47,6 +50,21 @@ const router = createRouter({
       path: "/view-meds",
       name: "ViewMedications",
       component: () => import("../views/ViewMedications.vue")
+    },
+    {
+      path: "/stocks",
+      name: "StocksView",
+      component: StocksView,
+    }, 
+    {
+      path: "/achievements",
+      name: "AchievementsView",
+      component: AchievementsView,
+    },
+    {
+      path: "/saved-pharmacy-info",
+      name: "SavedPharmacyInfo",
+      component: SavedPharmacyInfo,
     }
   ],
 })
