@@ -8,14 +8,20 @@ import router from "@/router";
 const form = ref({
   medicineName: "",
   description: "",
-  dosage: "",
-  medicineType: "",
-  schedule: "Everyday",
-  time: "",
+  unit: "",
+  status: "",
+  currentInventory: "",
+  refillThreshold: "",
+  doseQuantity: "",
+  take: "",
+  times: "",
+  shedule: {
+    type: "",
+    data: ""
+  },
+  nextScheduledDose: "",
   startDate: "",
   endDate: "",
-  stock: "",
-  expiryDate: "",
 });
 
 const showConfirm = ref(false);
@@ -238,14 +244,20 @@ const saveMedicationToDB = async () => {
     const payload = {
       medicineName: form.value.medicineName,
       description: form.value.description,
-      dosageText: form.value.dosage,
       form: form.value.medicineType,
-      scheduleType: form.value.schedule,
-      time: form.value.time || null,
+      unit: form.value.unit,
+      status: "Active",
+      // have to make soft delete
+      currentInventory: form.value.currentInventory,
+      refillThreshold: form.value.refillThreshold,
+      doseQuantity: form.value.doseQuantity,
+      take: form.value.take,
+      times: form.value.times,
+      // turn this into the object
+      schedule: form.value.schedule,
+      nextScheduledDose: form.value.nextScheduledDose,
       startDate: form.value.startDate,
       endDate: form.value.endDate || null,
-      stockQuantity: form.value.stock ? Number(form.value.stock) : null,
-      expiryDate: form.value.expiryDate || null,
     };
 
     await saveMeds(payload);
@@ -313,13 +325,8 @@ const saveMedicationToDB = async () => {
         </div>
 
         <div class="form-group">
-          <label>Dosage</label>
-          <input v-model="form.dosage" type="text" placeholder="e.g., 500mg" />
-        </div>
-
-        <div class="form-group">
-          <label>Medicine Type <span class="required">*</span></label>
-          <select v-model="form.medicineType" required>
+          <label>Form<span class="required">*</span></label>
+          <select v-model="form.form" required>
             <option disabled value="">Select type</option>
             <option>Tablet</option>
             <option>Capsule</option>
@@ -330,6 +337,38 @@ const saveMedicationToDB = async () => {
         </div>
 
         <div class="form-group">
+          <label>Unit</label>
+          <input v-model="form.unit" type="text" placeholder="e.g., Enum: pills, ml, mg, units, drops" />
+        </div>
+
+        <div class="form-group">
+          <label>Dose Quantity : <span>Please only enter number quantity</span></label>
+          <input v-model="form.doseQuantity" type="text" placeholder="e.g., (500) mg, (10) pills" />
+        </div>
+
+        <div class="form-group">
+          <label>Inventory</label>
+          <input v-model="form.currentInventory" type="text" placeholder="e.g., 150 ml bottle or 150 pills" />
+        </div>
+
+        <div class="form-group">
+          <label>Refill threshold: Alert when stock is under this amount</label>
+          <input v-model="form.refillThreshold" type="text" placeholder="e.g., Alert when stock <= 30 ml or 30 pills" />
+        </div>
+
+        <div class="form-group">
+          <label>Take : How much do you take per dose? </label>
+          <input v-model="form.take" type="text" placeholder="e.g., 1 ml per spoon or 1 pill" />
+        </div>
+
+        <div class="form-group">
+          <label>What time/s do you take the medication?</label>
+          <input v-model="form.times" type="text" placeholder="e.g., 08:00, 20:00, etc " />
+        </div>
+
+        <!-- how will the object take both assigned attributes? -->
+
+        <div class="form-group">
           <label>Schedule</label>
           <select v-model="form.schedule">
             <option>Everyday</option>
@@ -338,14 +377,6 @@ const saveMedicationToDB = async () => {
             <option>Every Few Days</option>
             <option>Custom</option>
           </select>
-        </div>
-
-        <div class="form-group">
-          <label>
-            Time
-            <span class="info-icon" title="Time must be in 5-minute increments (00, 05, 10, 15, etc.)">ℹ️</span>
-          </label>
-          <input v-model="form.time" type="time" step="300" />
         </div>
 
 
