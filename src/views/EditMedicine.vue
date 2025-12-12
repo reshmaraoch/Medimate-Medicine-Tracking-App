@@ -78,8 +78,11 @@ const saveChanges = async () => {
         </div>
 
         <div class="form-group">
-          <label>Time</label>
-          <input v-model="form.time" type="time" />
+          <label>
+            Time
+            <span class="info-icon" title="Time must be in 5-minute increments (00, 05, 10, 15, etc.)">ℹ️</span>
+          </label>
+          <input v-model="form.time" type="time" step="300" />
         </div>
 
         <div class="form-row">
@@ -188,4 +191,12 @@ const saveChanges = async () => {
   text-align: center;
   color: var(--color-subtle-text);
 }
+
+.info-icon {
+  margin-left: 5px;
+  cursor: help;
+  font-size: 14px;
+  color: var(--color-primary);
+}
+
 </style>

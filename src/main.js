@@ -19,3 +19,9 @@ app.use(VueFire, {
 app.use(router)
 
 app.mount('#app')
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/firebase-messaging-sw.js")
+    .then(() => console.log("Service Worker registered"))
+    .catch(err => console.error("Service Worker failed", err));
+}

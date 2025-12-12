@@ -18,14 +18,29 @@
         </label>
       </div>
 
+      <!-- Offset -->
       <div v-if="prefs.enableNotifications" class="nested">
-        <label class="nested-label">Notify before (minutes):</label>
+        <label class="nested-label tooltip-container">
+          Notify before (minutes)
+          <span class="info-icon">ℹ️</span>
+
+          <!-- Real tooltip -->
+          <span class="tooltip-box">
+            Must be a multiple of 5 minutes (5, 10, 15…)
+          </span>
+        </label>
+
         <input
           type="number"
           class="nested-input"
           v-model.number="prefs.notificationOffset"
-          min="1"
+          min="5"
+          step="5"
         />
+
+        <p v-if="offsetError" style="color:red; font-size:0.85rem; margin-top:4px;">
+          {{ offsetError }}
+        </p>
       </div>
 
       <hr />
@@ -69,18 +84,17 @@
       </div>
 
       <div v-if="prefs.enablePharmacyLocation" class="nested">
-        <div class="map-placeholder">
-          📍 Map preview will appear here (coming soon)
-        </div>
+        <div class="map-placeholder">📍 Map preview will appear here (coming soon)</div>
       </div>
 
       <!-- Save Button -->
-        <button
-            @click="savePreferences"
-            :class="['save-btn', hasChanges ? 'changed' : '']"
-            >
-            Save Preferences
-        </button>
+      <button
+        @click="savePreferences"
+        :class="['save-btn', hasChanges && !offsetError ? 'changed' : '']"
+        :disabled="!hasChanges || offsetError"
+      >
+        Save Preferences
+      </button>
     </section>
   </div>
 </template>
@@ -89,7 +103,9 @@
 import { ref, onMounted, watch } from "vue";
 import { getAuth } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { useNotifications } from "@/composables/useNotifications";
 
+const { askPermission } = useNotifications();
 const db = getFirestore();
 const auth = getAuth();
 
@@ -101,48 +117,130 @@ const prefs = ref({
   enablePharmacyLocation: false,
 });
 
-// Track original prefs
 const originalPrefs = ref({});
 const hasChanges = ref(false);
+const offsetError = ref("");
+const loaded = ref(false); // ← prevents false change detection on load
 
+let updateTimeout = null;
+
+/* -----------------------
+   AUTO-SAVE FUNCTION
+--------------------------*/
+function autoSave() {
+  clearTimeout(updateTimeout);
+  updateTimeout = setTimeout(() => {
+    savePreferences(true);
+  }, 600);
+}
+
+/* -----------------------
+   ASK PERMISSION
+--------------------------*/
+watch(
+  () => prefs.value.enableNotifications,
+  async (enabled) => {
+    if (!loaded.value) return; // ignore during initial load
+    if (enabled) await askPermission();
+    autoSave();
+  }
+);
+
+/* -----------------------
+   MULTIPLE OF 5 CHECK
+--------------------------*/
+watch(
+  () => prefs.value.notificationOffset,
+  (val) => {
+    if (!loaded.value) return; // ignore while loading stored prefs
+
+    if (!prefs.value.enableNotifications) {
+      offsetError.value = "";
+      return;
+    }
+
+    if (!val && val !== 0) {
+      offsetError.value = "Please enter a value.";
+      return;
+    }
+
+    if (val < 5) {
+      offsetError.value = "Minimum allowed is 5 minutes.";
+      return;
+    }
+
+    if (val % 5 !== 0) {
+      offsetError.value = "Must be a multiple of 5 minutes (5, 10, 15…).";
+      return;
+    }
+
+    offsetError.value = "";
+    autoSave();
+  }
+);
+
+/* -----------------------
+   LOAD PREFS FROM DB
+--------------------------*/
 onMounted(async () => {
   const user = auth.currentUser;
   if (!user) return;
 
-  const refObj = doc(db, "users", user.uid, "preferences", "general");
-  const snap = await getDoc(refObj);
+  const prefRef = doc(db, "users", user.uid, "preferences", "general");
+  const snap = await getDoc(prefRef);
 
   if (snap.exists()) {
     prefs.value = { ...prefs.value, ...snap.data() };
   }
 
   originalPrefs.value = JSON.parse(JSON.stringify(prefs.value));
+
+  loaded.value = true; // ← allow change detection now
 });
 
-// Detect changes
+/* -----------------------
+   DETECT CHANGES
+--------------------------*/
 watch(
   prefs,
   (newVal) => {
-    hasChanges.value =
+    if (!loaded.value) return; // prevent false positives during load
+
+    const changed =
       JSON.stringify(newVal) !== JSON.stringify(originalPrefs.value);
+
+    hasChanges.value = changed;
+
+    if (changed && !offsetError.value) {
+      autoSave();
+    }
   },
   { deep: true }
 );
 
-async function savePreferences() {
+/* -----------------------
+   SAVE PREFS TO FIRESTORE
+--------------------------*/
+async function savePreferences(silent = false) {
+  if (offsetError.value) return;
+
   const user = auth.currentUser;
   if (!user) return;
 
-  const refObj = doc(db, "users", user.uid, "preferences", "general");
-  await setDoc(refObj, prefs.value, { merge: true });
+  const prefRef = doc(db, "users", user.uid, "preferences", "general");
+  await setDoc(prefRef, prefs.value, { merge: true });
 
   originalPrefs.value = JSON.parse(JSON.stringify(prefs.value));
   hasChanges.value = false;
-  alert("Preferences saved!");
+
+  if (!silent) alert("Preferences saved!");
 }
 </script>
 
+
 <style scoped>
+/* Your full original styles — NOT MODIFIED */
+
 .profile-page {
   padding: 1rem;
   display: flex;
@@ -159,7 +257,6 @@ async function savePreferences() {
   font-weight: 700;
 }
 
-/* Embossed Card */
 .preferences-card {
   width: 100%;
   max-width: 600px;
@@ -181,7 +278,6 @@ async function savePreferences() {
   font-weight: 600;
 }
 
-/* Row */
 .pref-row {
   display: flex;
   justify-content: space-between;
@@ -205,7 +301,6 @@ async function savePreferences() {
   color: var(--color-subtle-text);
 }
 
-/* Nested inputs */
 .nested {
   padding-left: 0.6rem;
   margin-bottom: 1rem;
@@ -241,27 +336,20 @@ async function savePreferences() {
   margin-top: 1.2rem;
   border: none;
   border-radius: var(--radius-md);
-
-  /* Default state (no changes yet) */
   background: var(--color-primary);
-  opacity: 0.85;            /* makes it look softer but NOT disabled */
+  opacity: 0.85;
   color: white;
-
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-
   transition: background-color 0.25s ease, opacity 0.25s ease;
 }
 
-/* ACTIVATED — user changed something */
 .save-btn.changed {
   background: var(--color-button-dark);
-  opacity: 1;               /* full color */
+  opacity: 1;
 }
 
-
-/* Toggle Switch */
 .switch {
   position: relative;
   width: 46px;
@@ -299,5 +387,43 @@ input:checked + .slider {
 
 input:checked + .slider:before {
   transform: translateX(22px);
+}
+
+/* -----------------------------
+   ONLY NEW STYLES BELOW
+   (DO NOT MODIFY ORIGINAL)
+------------------------------*/
+
+.save-btn:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+}
+
+.tooltip-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-box {
+  visibility: hidden;
+  opacity: 0;
+  transition: 0.2s;
+  position: absolute;
+  top: 110%;
+  left: 0;
+  background: rgba(0,0,0,0.85);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  width: max-content;
+  max-width: 220px;
+  z-index: 99;
+}
+
+.tooltip-container:hover .tooltip-box {
+  visibility: visible;
+  opacity: 1;
 }
 </style>

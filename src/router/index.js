@@ -6,6 +6,9 @@ import AddMedicine from '@/views/AddMedicine.vue'
 import StocksView from '@/views/StocksView.vue'
 import AchievementsView from '@/views/AchievementsView.vue'
 import SavedPharmacyInfo from '@/views/SavedPharmacyInfo.vue'
+import { getAuth } from "firebase/auth";
+import { needsNotificationPrompt } from "@/composables/useNotifications";
+import { useNotifications } from "@/composables/useNotifications";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -43,7 +46,7 @@ const router = createRouter({
     {
        path: "/edit-medicine/:id",
        name: "EditMedicine",
-       component: () => import("@/views/EditMedicine.vue"),
+       component: () => import("../views/EditMedicine.vue"),
        props: true
     },
     {
@@ -68,5 +71,19 @@ const router = createRouter({
     }
   ],
 })
+
+router.beforeEach((to, from, next) => {
+  const user = getAuth().currentUser;
+
+  if (user) {
+    const { shouldAskPermission } = useNotifications();
+
+    if (shouldAskPermission()) {
+      needsNotificationPrompt.value = true;
+    }
+  }
+
+  next();
+});
 
 export default router

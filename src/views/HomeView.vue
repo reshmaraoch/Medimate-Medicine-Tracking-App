@@ -1,6 +1,5 @@
 <template>
   <main class="landing-container">
-    <!-- Hero -->
     <section class="hero">
       <h1 class="hero-title">Track Your Medication Effortlessly</h1>
       <p class="hero-subtitle">
@@ -12,7 +11,6 @@
       </button>
     </section>
 
-    <!-- Feature Section -->
     <section class="features">
       <div class="feature-card">
         <h3>Automatic Refill Tracking</h3>
@@ -31,6 +29,10 @@
     </section>
   </main>
 </template>
+
+<script setup>
+// HomeView does NOT need notification logic
+</script>
 
 <style scoped>
 .landing-container {
@@ -89,6 +91,7 @@
   color: var(--color-text);
   margin-bottom: 8px;
 }
+
 .feature-card p {
   color: var(--color-subtle-text);
   font-size: 15px;
