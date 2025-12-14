@@ -10,7 +10,8 @@ import "leaflet/dist/leaflet.css";
 
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const { askPermission } = useNotifications();
+// Destructure both askPermission AND removeFCMToken
+const { askPermission, removeFCMToken } = useNotifications();
 const route = useRoute();
 
 /* ------------------------------------------------------------------
@@ -225,13 +226,25 @@ onMounted(() => {
 });
 
 /* ================================================================
-   NOTIFICATION PERMISSION + OFFSET VALIDATION
+   NOTIFICATION & FCM TOKEN MANAGEMENT
 ================================================================ */
+// Watch BOTH toggles. 
+// If either is enabled -> Ensure Token Exists
+// If BOTH are disabled -> Delete Token
 watch(
-  () => prefs.value.enableNotifications,
-  async (enabled) => {
+  [() => prefs.value.enableNotifications, () => prefs.value.enableStockAlerts],
+  async ([notifEnabled, stockEnabled]) => {
     if (!loaded.value) return;
-    if (enabled) await askPermission();
+
+    const isAnyEnabled = notifEnabled || stockEnabled;
+
+    if (isAnyEnabled) {
+      console.log("🔔 Settings: One or both alerts enabled. Requesting Token...");
+      await askPermission();
+    } else {
+      console.log("🔕 Settings: All alerts disabled. Removing Token...");
+      await removeFCMToken();
+    }
   }
 );
 
@@ -667,7 +680,6 @@ onBeforeUnmount(() => {
 
       <div class="settings-main">
         <div class="settings-left">
-          <!-- PROFILE -->
           <section class="settings-section">
             <h2 class="section-title">Profile</h2>
             <div class="field-row">
@@ -682,7 +694,6 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <!-- REMINDERS & ALERTS -->
           <section class="settings-section">
             <h2 class="section-title">Reminders & Alerts</h2>
 
@@ -740,7 +751,6 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <!-- SAVED PHARMACY -->
           <section class="settings-section" id="saved-pharmacy" ref="savedPharmacySection">
             <h2 class="section-title">Saved Pharmacy</h2>
             <p class="pref-desc">
@@ -785,7 +795,6 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <!-- PHARMACY LOCATION MAP -->
           <section class="settings-section">
             <h2 class="section-title">Pharmacy Location</h2>
 
@@ -818,7 +827,6 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <!-- SAVE + LOGOUT -->
           <section class="settings-actions">
             <button
               type="button"
