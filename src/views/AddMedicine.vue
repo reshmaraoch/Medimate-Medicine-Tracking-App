@@ -1,38 +1,131 @@
+<!-- eslint-disable no-unused-vars -->
 <script setup>
-import { ref, computed } from "vue";
-import Tesseract from "tesseract.js";
+import { ref, computed, nextTick } from "vue";
+// import Tesseract from "tesseract.js";
 import { saveMeds } from "@/firebase/firebase_service.js";
 import router from "@/router";
+import { usePrescriptionOCR } from "@/composables/usePrescriptionOCR";
+import { mapForm, mapOCRScheduleToOption } from "@/ocr/RxParser";
+import { calculateNextScheduledDose } from "@/utils/scheduleUtils";
+
+
+const { ocrResults, loading: ocrLoading, error: ocrError, scanImage } = usePrescriptionOCR();
+
+const fileInput = ref(null);
+const cameraInput = ref(null);
+
+const newTime = ref("");
+
+function openFilePicker() {
+  fileInput.value?.click();
+}
+
+function openCamera() {
+  cameraInput.value?.click();
+}
+
+function handleImageSelected(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  // ✅ Reuse your existing OCR composable
+  scanImage(file);
+
+  // Reset input so the same file can be selected again
+  event.target.value = "";
+}
+
 
 // ---------- FORM STATE ----------
+// const form = ref({
+//   medicineName: "",
+//   description: "",
+//   unit: "",
+//   status: "",
+//   currentInventory: "",
+//   refillThreshold: "",
+//   doseQuantity: "",
+//   take: "",
+//   times: "",
+//   shedule: {
+//     type: "",
+//     data: ""
+//   },
+//   nextScheduledDose: "",
+//   startDate: "",
+//   endDate: "",
+// });
+
 const form = ref({
   medicineName: "",
   description: "",
-  unit: "",
-  status: "",
-  currentInventory: "",
-  refillThreshold: "",
-  doseQuantity: "",
-  take: "",
-  times: "",
-  shedule: {
-    type: "",
-    data: ""
+
+  // Medication form/type
+  form: "", // Tablet | Capsule | Syrup | Injection | Other
+
+  // Inventory & dosage (NUMBERS ONLY)
+  doseQuantity: null,
+  currentInventory: null,
+  refillThreshold: null,
+  dosePerDose: null, // renamed from "take"
+
+  // Schedule (structured)
+  schedule: {
+    type: "Everyday", // default
+    data: {}
   },
-  nextScheduledDose: "",
+
+  // Times per day
+  times: [], // ["08:00", "20:00"]
+
+  // Dates
   startDate: "",
-  endDate: "",
+  endDate: null,
+
+  // Derived / backend-managed
+  status: "Active",
+  nextScheduledDose: null,
 });
+
 
 const showConfirm = ref(false);
 
-// ---------- OCR STATE ----------
-const ocrFileInput = ref(null);
-const formSection = ref(null);
-const ocrStatus = ref("");
+const derivedUnit = computed(() => {
+  switch (form.value.form) {
+    case "Tablet":
+    case "Capsule":
+      return "pill";
+    case "Syrup":
+      return "ml";
+    case "Injection":
+      return "unit";
+    default:
+      return "";
+  }
+})
 
-// currentMode from your vanilla code: we'll keep fast vs accurate for future extension
-const currentMode = ref("accurate"); // "fast" or "accurate"
+// function onImageUpload(e) {
+//   const file = e.target.files[0];
+//   if (file)
+//     scanImage(file);
+// }
+
+function selectOCRMedication(med) {
+  // Fill form fields
+  form.value.medicineName = med.name || ''
+  form.value.doseQuantity = med.dosage || ''
+
+  const mappedSchedule = mapOCRScheduleToOption(med.schedule)
+  form.value.schedule.type = mappedSchedule;
+
+  // Optional: infer form/unit later if you want
+  form.value.form = mapForm(med.raw) || '';
+
+  // Scroll to form
+  nextTick(() => {
+    document.getElementById("add-medicine-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  })
+}
 
 // ---------- COURSE LENGTH ----------
 const courseLength = computed(() => {
@@ -49,204 +142,28 @@ const openDatePicker = (event) => {
   event.target.showPicker?.(); // supported in modern Chrome
 };
 
-// ---------- OCR FLOW ----------
-const triggerOcrFilePicker = () => {
-  ocrFileInput.value?.click();
-};
-
-const handleOcrFileChange = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  try {
-    ocrStatus.value = "Preparing image for OCR...";
-    const objectUrl = URL.createObjectURL(file);
-
-    const img = new Image();
-    img.onload = async () => {
-      try {
-        // mimic your "fast" scaling: ~1200px max dimension
-        const maxDimFast = 1200;
-        let width = img.width;
-        let height = img.height;
-
-        if (currentMode.value === "fast") {
-          const scale = Math.min(maxDimFast / width, maxDimFast / height, 1);
-          width = Math.floor(width * scale);
-          height = Math.floor(height * scale);
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const dataURL = canvas.toDataURL("image/png");
-        URL.revokeObjectURL(objectUrl);
-
-        await performOCR(dataURL);
-      } catch (err) {
-        console.error(err);
-        ocrStatus.value = "Error processing image. Please try another photo.";
-      }
-    };
-    img.onerror = () => {
-      ocrStatus.value = "Could not load image. Try another file.";
-    };
-    img.src = objectUrl;
-  } catch (err) {
-    console.error(err);
-    ocrStatus.value = "Error reading file.";
-  } finally {
-    // reset input so same file can be re-selected
-    e.target.value = "";
-  }
-};
-
-async function performOCR(dataURL) {
-  try {
-    const modeLabel = currentMode.value === "fast" ? "Fast" : "Accurate";
-    ocrStatus.value = `Running OCR (${modeLabel} mode)...`;
-
-    const result = await Tesseract.recognize(dataURL, "eng");
-    const text = result.data.text || "";
-
-    ocrStatus.value = "OCR complete. Parsing prescription text...";
-
-    // Use your original parser
-    let parsed = parseUniversalPrescription(text);
-
-    if (!parsed.medications.length && currentMode.value === "fast") {
-      parsed = fallbackParseLinesToMeds(text);
-    }
-
-    if (!parsed.medications.length) {
-      ocrStatus.value =
-        "Could not detect clear medication lines. Please edit manually.";
-      return;
-    }
-
-    const firstMed = parsed.medications[0];
-
-    // Map parsed fields into the form
-    form.value.medicineName = firstMed.name || form.value.medicineName;
-    form.value.dosage = firstMed.dosage || form.value.dosage;
-    // We only have free-text schedule; user can refine it
-    if (firstMed.schedule && !form.value.schedule) {
-      form.value.schedule = "Custom";
-    }
-
-    ocrStatus.value =
-      "Prescription scanned. We filled what we could. Scroll down to review and complete the form.";
-
-    // Smooth scroll to the form
-    setTimeout(() => {
-      formSection.value?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 200);
-  } catch (err) {
-    console.error(err);
-    ocrStatus.value = "Error during OCR. Please try again with a clearer image.";
-  }
-}
-
-// ---------- PARSERS (adapted from your script.js) ----------
-function parseUniversalPrescription(text) {
-  const lines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-
-  const medications = [];
-
-  const dosageRegex =
-    /\b(\d+\s?mg|\d+\s?g|\d+\s?mcg|\d+\s?iu|\d+\s?ml|[1-3]\s?(tablet|tablets|capsule|capsules|cap|caps))\b/i;
-
-  const scheduleRegex =
-    /\b(every\s?\d+\s?(hours|hrs|hr)|once (a )?day|twice (a )?day|thrice (a )?day|daily|at bedtime|morning|night)\b/i;
-
-  for (let line of lines) {
-    const lowered = line.toLowerCase();
-
-    if (lowered.includes("patient")) continue;
-    if (lowered.includes("doctor")) continue;
-    if (lowered.includes("physician")) continue;
-    if (lowered.includes("address")) continue;
-    if (lowered.includes("phone")) continue;
-    if (lowered.includes("email")) continue;
-    if (lowered.includes("date")) continue;
-    if (lowered.includes("signature")) continue;
-    if (lowered.startsWith("rx")) continue;
-
-    const dosageMatch = line.match(dosageRegex);
-    const scheduleMatch = line.match(scheduleRegex);
-
-    if (dosageMatch && scheduleMatch) {
-      const dosage = dosageMatch[1];
-      const schedule = scheduleMatch[1];
-
-      const namePart = line.split(dosageMatch[0])[0].trim();
-      const name = namePart.replace(/[\d:,|-]/g, "").trim();
-
-      medications.push({
-        name,
-        dosage,
-        schedule,
-      });
-    }
-  }
-
-  return { medications };
-}
-
-function fallbackParseLinesToMeds(text) {
-  const lines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-
-  const meds = [];
-
-  for (let line of lines) {
-    const lowered = line.toLowerCase();
-
-    if (lowered.includes("patient")) continue;
-    if (lowered.includes("doctor")) continue;
-    if (lowered.includes("physician")) continue;
-    if (lowered.includes("address")) continue;
-    if (lowered.includes("phone")) continue;
-    if (lowered.includes("email")) continue;
-    if (lowered.includes("date")) continue;
-    if (lowered.includes("signature")) continue;
-    if (lowered.startsWith("rx")) continue;
-
-    meds.push({
-      name: line,
-      dosage: "",
-      schedule: "",
-    });
-  }
-
-  return { medications: meds };
-}
-
 // ---------- FORM FLOW ----------
 const openConfirmation = () => {
-  if (!form.value.medicineName || !form.value.medicineType || !form.value.startDate) {
-    console.log(form.value.medicineName, form.value.medicineType, form.value.startDate)
+  if (!form.value.medicineName || !form.value.form || !form.value.startDate) {
+    console.log(form.value.medicineName, form.value.form, form.value.startDate)
     alert("Please fill required fields (Name, Type, Start Date).");
     return;
   }
   showConfirm.value = true;
 };
 
+
 const saveMedicationToDB = async () => {
   try {
+    const nextDose = calculateNextScheduledDose({
+      schedule: form.value.schedule,
+      times: form.value.times,
+    });
     const payload = {
       medicineName: form.value.medicineName,
       description: form.value.description,
-      form: form.value.medicineType,
-      unit: form.value.unit,
+      form: form.value.form,
+      unit: derivedUnit.value || null,
       status: "Active",
       // have to make soft delete
       currentInventory: form.value.currentInventory,
@@ -256,7 +173,7 @@ const saveMedicationToDB = async () => {
       times: form.value.times,
       // turn this into the object
       schedule: form.value.schedule,
-      nextScheduledDose: form.value.nextScheduledDose,
+      nextScheduledDose: nextDose,
       startDate: form.value.startDate,
       endDate: form.value.endDate || null,
     };
@@ -273,6 +190,62 @@ const saveMedicationToDB = async () => {
     alert("There was an error saving the medication.");
   }
 };
+
+const WEEK_DAYS = [{ label: "Sun", value: 0 }, { label: "Mon", value: 1 }, { label: "Tue", value: 2 }, { label: "Wed", value: 3 }, { label: "Thu", value: 4 }, { label: "Fri", value: 5 }, { label: "Sat", value: 6 }]
+
+function onScheduleChange() {
+  switch (form.value.schedule.type) {
+    case "Specific Days":
+      form.value.schedule.data = { daysOfWeek: [] };
+      break;
+
+    case "Every Few Days":
+      form.value.schedule.data = { interval: null, startDate: form.value.startDate || null };
+      break;
+
+    case "Custom":
+      form.value.schedule.data = { dates: [] };
+      break;
+
+    default:
+      form.value.schedule.data = {};
+  }
+}
+function toggleDay(day) {
+  const days = form.value.schedule.data.daysOfWeek;
+  const idx = days.indexOf(day);
+
+  if (idx == -1)
+    days.push(day);
+  else
+    days.splice(idx, 1);
+}
+
+function addCustomDate(date) {
+  if (!date) return;
+  const dates = form.value.schedule.data.dates;
+  if (!dates.includes(date)) dates.push(date);
+}
+
+function removeCustomDate(date) {
+  form.value.schedule.data.dates =
+    form.value.schedule.data.dates.filter(d => d !== date);
+}
+
+function addTime() {
+  if (!newTime.value) return;
+
+  const time = newTime.value;
+
+  if (!form.value.times.includes(time)) {
+    form.value.times.push(time);
+    form.value.times.sort();
+  }
+  newTime.value = "";
+}
+function removeTime(time) {
+  form.value.times = form.value.times.filter(t => t !== time);
+}
 </script>
 
 
@@ -286,23 +259,48 @@ const saveMedicationToDB = async () => {
         You can upload a prescription to auto-fill details, or enter them manually below.
       </p>
 
-      <!-- Hidden file input for OCR -->
-      <input
-        ref="ocrFileInput"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style="display:none"
-        @change="handleOcrFileChange"
-      />
+      <!-- OCR Upload -->
+      <!-- <div class="ocr-section">
+        <input type="file" accept="image/*" @change="onImageUpload" />
+      </div> -->
 
-      <button class="ocr-button" type="button" @click="triggerOcrFilePicker">
-        📷 Upload Prescription to Auto-Fill
-      </button>
+      <div class="ocr-actions">
+        <!-- Upload button -->
+        <button class="icon-btn" title="Upload prescription" @click="openFilePicker">
+          ⬆️
+        </button>
 
-      <p class="ocr-status" v-if="ocrStatus">
-        {{ ocrStatus }}
-      </p>
+        <!-- Camera button -->
+        <button class="icon-btn" title="Scan using camera" @click="openCamera">
+          📷
+        </button>
+
+        <!-- Hidden upload input -->
+        <input ref="fileInput" type="file" accept="image/*" hidden @change="handleImageSelected" />
+
+        <!-- Hidden camera input -->
+        <input ref="cameraInput" type="file" accept="image/*" capture="environment" hidden
+          @change="handleImageSelected" />
+      </div>
+
+
+      <p v-if="ocrLoading">Scanning prescription…</p>
+      <p v-if="ocrError" class="error">{{ ocrError }}</p>
+
+      <!-- OCR Cards -->
+      <section v-if="ocrResults.length" class="ocr-results">
+        <h3>Select a medication</h3>
+
+        <div class="ocr-grid">
+          <div v-for="med in ocrResults" :key="med.id" class="ocr-card" @click="selectOCRMedication(med)">
+            <h4 class="ocr-title">{{ med.name || 'Unnamed medication' }}</h4>
+
+            <p><strong>Dosage:</strong> {{ med.dosage || '—' }}</p>
+            <p><strong>Schedule:</strong> {{ med.schedule || '—' }}</p>
+          </div>
+        </div>
+      </section>
+
     </section>
 
     <!-- Divider -->
@@ -311,7 +309,7 @@ const saveMedicationToDB = async () => {
     </div>
 
     <!-- MANUAL FORM -->
-    <section class="form-card" ref="formSection">
+    <section class="form-card" ref="formSection" id="add-medicine-form">
       <h2>Add Details Manually</h2>
 
       <form @submit.prevent="openConfirmation" class="medicine-form">
@@ -337,14 +335,18 @@ const saveMedicationToDB = async () => {
           </select>
         </div>
 
-        <div class="form-group">
+        <!-- <div class="form-group">
           <label>Unit</label>
           <input v-model="form.medicineType" type="text" placeholder="e.g., Enum: pills, ml, mg, units, drops" />
-        </div>
+        </div> -->
 
         <div class="form-group">
           <label>Dose Quantity : <span>Please only enter number quantity</span></label>
-          <input v-model="form.doseQuantity" type="text" placeholder="e.g., (500) mg, (10) pills" />
+          <!-- <input v-model="form.doseQuantity" type="text" placeholder="e.g., (500) mg, (10) pills" /> -->
+          <div class="dose-input-wrapper">
+            <input v-model.number="form.doseQuantity" type="number" min=0 placeholder="e.g.: 1">
+            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
+          </div>
         </div>
 
         <div class="form-group">
@@ -362,43 +364,93 @@ const saveMedicationToDB = async () => {
           <input v-model="form.take" type="text" placeholder="e.g., 1 ml per spoon or 1 pill" />
         </div>
 
+        <!-- <div class="form-group"> -->
+        <!-- <label>What time/s do you take the medication?</label> -->
+        <!-- <input v-model="form.times" type="text" placeholder="e.g., 08:00, 20:00, etc " /> -->
+        <!-- </div> -->
+
         <div class="form-group">
-          <label>What time/s do you take the medication?</label>
-          <input v-model="form.times" type="text" placeholder="e.g., 08:00, 20:00, etc " />
+          <label>What time(s) do you take the medication?</label>
+
+          <div class="time-input-row">
+            <input type="time" v-model="newTime" />
+            <button type="button" class="add-time-btn" @click="addTime">
+              + Add
+            </button>
+          </div>
+
+          <ul v-if="form.times.length" class="time-list">
+            <li v-for="time in form.times" :key="time">
+              {{ time }}
+              <button type="button" @click="removeTime(time)">✕</button>
+            </li>
+          </ul>
         </div>
 
         <!-- how will the object take both assigned attributes? -->
 
+        <!-- <div class="form-group"> -->
+        <!-- <label>Schedule</label> -->
+        <!-- <select v-model="form.schedule"> -->
+        <!-- <option>Everyday</option> -->
+        <!-- <option>As Needed</option> -->
+        <!-- <option>Specific Days</option> -->
+        <!-- <option>Every Few Days</option> -->
+        <!-- <option>Custom</option> -->
+        <!-- </select> -->
+        <!-- </div> -->
+
         <div class="form-group">
           <label>Schedule</label>
-          <select v-model="form.schedule">
+          <select v-model="form.schedule.type" @change="onScheduleChange">
             <option>Everyday</option>
-            <option>As Needed</option>
             <option>Specific Days</option>
             <option>Every Few Days</option>
             <option>Custom</option>
           </select>
+
+          <div v-if="form.schedule.type === 'Specific Days'" class="form-group">
+            <label>Select days of the week</label>
+
+            <div class="weekday-grid">
+              <button v-for="day in WEEK_DAYS" :key="day.value" type="button" class="weekday-btn"
+                :class="{ active: form.schedule.data.daysOfWeek.includes(day.value) }" @click="toggleDay(day.value)">
+                {{ day.label }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="form.schedule.type === 'Every Few Days'" class="form-group">
+            <label>Every how many days?</label>
+            <input type="number" min="1" v-model.number="form.schedule.data.interval" placeholder="e.g. 2" />
+          </div>
+
+
+          <div v-if="form.schedule.type === 'Custom'" class="form-group">
+            <label>Add custom dates</label>
+
+            <input type="date" @change="e => addCustomDate(e.target.value)" />
+
+            <ul class="custom-date-list">
+              <li v-for="date in form.schedule.data.dates" :key="date">
+                {{ date }}
+                <button type="button" @click="removeCustomDate(date)">✕</button>
+              </li>
+            </ul>
+          </div>
+
         </div>
 
 
         <div class="form-row">
           <div class="form-group">
             <label>Start Date <span class="required">*</span></label>
-            <input
-              v-model="form.startDate"
-              type="date"
-              required
-              @click="openDatePicker"
-            />
+            <input v-model="form.startDate" type="date" required @click="openDatePicker" />
           </div>
 
           <div class="form-group">
             <label>End Date</label>
-            <input
-              v-model="form.endDate"
-              type="date"
-              @click="openDatePicker"
-            />
+            <input v-model="form.endDate" type="date" @click="openDatePicker" />
           </div>
         </div>
 
@@ -407,10 +459,10 @@ const saveMedicationToDB = async () => {
           Your course of meds runs for <strong>{{ courseLength }}</strong> days.
         </p>
 
-        <div class="form-group">
-          <label>Available Stock</label>
-          <input v-model.number="form.stock" type="number" min="0" placeholder="e.g., 30" />
-        </div>
+        <!-- <div class="form-group"> -->
+        <!-- <label>Available Stock</label> -->
+        <!-- <input v-model.number="form.stock" type="number" min="0" placeholder="e.g., 30" /> -->
+        <!-- </div> -->
 
         <div class="form-group">
           <label>Expiry Date</label>
@@ -432,7 +484,7 @@ const saveMedicationToDB = async () => {
           <li><strong>Name:</strong> {{ form.medicineName }}</li>
           <li><strong>Description:</strong> {{ form.description || "—" }}</li>
           <li><strong>Dosage:</strong> {{ form.doseQuantity || "—" }}</li>
-          <li><strong>Type:</strong> {{ form.medicineType }}</li>
+          <li><strong>Type:</strong> {{ form.form }}</li>
           <li><strong>Schedule:</strong> {{ form.schedule || "—" }}</li>
           <li><strong>Time:</strong> {{ form.times || "—" }}</li>
           <li>
@@ -493,6 +545,7 @@ const saveMedicationToDB = async () => {
   font-size: 14px;
   cursor: pointer;
 }
+
 .ocr-button:hover {
   background: var(--color-primary-hover);
 }
@@ -512,6 +565,7 @@ const saveMedicationToDB = async () => {
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+
 .section-divider::before,
 .section-divider::after {
   content: "";
@@ -519,6 +573,7 @@ const saveMedicationToDB = async () => {
   height: 1px;
   background: #d1d5db;
 }
+
 .section-divider span {
   margin: 0 12px;
 }
@@ -579,6 +634,17 @@ const saveMedicationToDB = async () => {
   gap: 12px;
 }
 
+.dose-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dose-unit {
+  font-size: 14px;
+  color: var(--color-subtle-text);
+}
+
 @media (max-width: 768px) {
   .form-row {
     flex-direction: column;
@@ -601,6 +667,7 @@ const saveMedicationToDB = async () => {
 input[type="time"] {
   cursor: pointer;
 }
+
 input[type="time"]::-webkit-calendar-picker-indicator {
   display: block;
 }
@@ -616,6 +683,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-size: 14px;
   cursor: pointer;
 }
+
 .submit-button:hover {
   background: var(--color-primary-hover);
 }
@@ -654,6 +722,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-size: 14px;
   color: #374151;
 }
+
 .confirm-list li {
   margin-bottom: 4px;
 }
@@ -678,6 +747,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: #e5e7eb;
   color: #111827;
 }
+
 .btn-secondary:hover {
   background: #d1d5db;
 }
@@ -686,13 +756,150 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: var(--color-primary);
   color: white;
 }
+
 .btn-primary:hover {
   background: var(--color-primary-hover);
 }
+
 .info-icon {
   margin-left: 5px;
   cursor: help;
   font-size: 14px;
   color: var(--color-primary);
+}
+
+.ocr-results {
+  max-width: 900px;
+  margin: 2rem auto;
+}
+
+.ocr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.ocr-card {
+  background: var(--color-card);
+  border-radius: 14px;
+  padding: 1.25rem;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ocr-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.ocr-title {
+  margin-bottom: 0.5rem;
+  font-size: 1.05rem;
+}
+
+.ocr-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.icon-btn:hover {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  transform: translateY(-1px);
+}
+
+.icon-btn:active {
+  transform: translateY(0);
+}
+
+.weekday-grod {
+  display: grid;
+  grid-template-columns: repet(7, 1fr);
+  gap: 6px;
+}
+
+.weekday-btn {
+  padding: 6px 0;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.weekday-btn.active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.custom-date-list {
+  margin-top: 8px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.custom-date-list li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.time-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.add-time-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--color-primary);
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.add-time-btn:hover {
+  background: var(--color-primary-hover);
+}
+
+.time-list {
+  margin-top: 8px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.time-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.time-list button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #dc2626;
 }
 </style>
