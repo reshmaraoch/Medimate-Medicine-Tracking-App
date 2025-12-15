@@ -20,30 +20,34 @@ const user = ref(null);
 const isMenuOpen = ref(false);
 const menuRef = ref(null);
 
-// listen to auth state changes
+function handleClickOutside(e) {
+  if (!menuRef.value) return;
+  if (!menuRef.value.contains(e.target)) isMenuOpen.value = false;
+}
+
+let unsubscribeAuth = null;
+
 onMounted(() => {
-  onAuthStateChanged(auth, (firebaseUser) => {
+  document.addEventListener("click", handleClickOutside);
+
+  // Keep user info reactive in UI (menu/login button)
+  unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
     user.value = firebaseUser;
     if (!firebaseUser) isMenuOpen.value = false;
   });
-
-  document.addEventListener("click", handleClickOutside);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener("click", handleClickOutside);
+  if (unsubscribeAuth) unsubscribeAuth();
 });
-
-function handleClickOutside(e) {
-  if (!menuRef.value) return;
-  if (!menuRef.value.contains(e.target)) {
-    isMenuOpen.value = false;
-  }
-}
 
 async function login() {
   try {
     await signInWithPopup(auth, provider);
+
+    // ✅ instant navigation after login
+    router.replace("/dashboard");
   } catch (e) {
     console.error("Login error:", e);
   }
@@ -53,6 +57,9 @@ async function logout() {
   try {
     await signOut(auth);
     isMenuOpen.value = false;
+
+    // ✅ instant navigation after logout
+    router.replace("/");
   } catch (e) {
     console.error("Logout error:", e);
   }
@@ -68,7 +75,6 @@ function goTo(path) {
   router.push(path);
 }
 
-// SPECIAL: goes to Settings and focuses Saved Pharmacy section
 function goToSavedPharmacy() {
   isMenuOpen.value = false;
   router.push({
@@ -80,10 +86,10 @@ function goToSavedPharmacy() {
 
 <template>
   <div class="auth-bar">
-    <!-- NOT LOGGED IN: just show login button -->
+    <!-- NOT LOGGED IN -->
     <button v-if="!user" class="login-btn" @click="login">Log In</button>
 
-    <!-- LOGGED IN: show avatar + dropdown menu -->
+    <!-- LOGGED IN -->
     <div v-else class="user-menu" ref="menuRef">
       <button class="avatar-btn" @click="toggleMenu">
         <span class="avatar-icon">👤</span>
@@ -96,22 +102,14 @@ function goToSavedPharmacy() {
             <div class="user-email">{{ user.email }}</div>
           </div>
 
-          <!-- UPDATED: now jumps directly to Saved Pharmacy section -->
           <button class="menu-item" @click="goToSavedPharmacy">
             Saved Pharmacy Info
           </button>
 
-          <button class="menu-item" @click="goTo('/stocks')">
-            View Stocks
-          </button>
+          <button class="menu-item" @click="goTo('/stocks')">View Stocks</button>
+          <button class="menu-item" @click="goTo('/settings')">Settings</button>
 
-          <button class="menu-item" @click="goTo('/settings')">
-            Settings
-          </button>
-
-          <button class="menu-item logout" @click="logout">
-            Log Out
-          </button>
+          <button class="menu-item logout" @click="logout">Log Out</button>
         </div>
       </transition>
     </div>
@@ -159,10 +157,7 @@ function goToSavedPharmacy() {
 }
 
 .avatar-btn:hover {
-  box-shadow: var(
-    --shadow-elevated,
-    0 4px 12px rgba(0, 0, 0, 0.18)
-  );
+  box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.18));
 }
 
 .avatar-icon {
@@ -179,10 +174,7 @@ function goToSavedPharmacy() {
   max-width: min(260px, 90vw);
   background: var(--color-card, #ffffff);
   border-radius: 10px;
-  box-shadow: var(
-    --shadow-elevated,
-    0 8px 20px rgba(15, 23, 42, 0.25)
-  );
+  box-shadow: var(--shadow-elevated, 0 8px 20px rgba(15, 23, 42, 0.25));
   overflow: hidden;
   z-index: 20;
 }
@@ -249,12 +241,10 @@ function goToSavedPharmacy() {
     width: 40px;
     height: 40px;
   }
-
   .user-menu-dropdown {
     right: 0;
     max-width: 92vw;
   }
-
   .menu-item {
     white-space: normal;
   }
