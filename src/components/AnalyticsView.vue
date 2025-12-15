@@ -3,7 +3,8 @@
     <header class="header-section card">
       <div class="header-top">
         <div>
-          <h2 class="page-title">Adherence Analytics</h2>
+          <h2 class="page-title">MediMate Check-In</h2>
+          <p class="page-subtitle">A quick look at how you’re doing today</p>
           <p class="page-subtitle">{{ todayHeaderLabel }}</p>
         </div>
       </div>
@@ -35,20 +36,14 @@
         <div class="toolbar-right">
           <span class="filter-label">Filter</span>
 
-          <!-- Placeholder option works only if v-model is null -->
-          <select
-            class="med-select"
-            v-model="selectedMedId"
-            :disabled="medicineOptions.length === 0 || medicineOptions[0]?.disabled"
-          >
-            <option :value="null" disabled>{{ dropdownPlaceholder }}</option>
+          <!-- ✅ No disabled placeholder option.
+               ✅ Today tab: "Today's medicines" (all) + due-today meds
+               ✅ Weekly/Monthly: "Active medicines" (all) + active meds -->
+          <select class="med-select" v-model="selectedFilter">
+            <option v-if="activeTab === 'today'" value="__TODAY__">Today's medicines</option>
+            <option v-else value="__ACTIVE__">Active medicines</option>
 
-            <option
-              v-for="opt in medicineOptions"
-              :key="opt.value"
-              :value="opt.value"
-              :disabled="opt.disabled"
-            >
+            <option v-for="opt in medicineOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
           </select>
@@ -77,7 +72,13 @@
 
         <div class="summary-card">
           <div class="summary-label">
-            {{ activeTab === "today" ? "Medicines due" : activeTab === "weekly" ? "Days tracked" : "Weeks included" }}
+            {{
+              activeTab === "today"
+                ? "Medicines due"
+                : activeTab === "weekly"
+                ? "Days tracked"
+                : "Weeks included"
+            }}
           </div>
           <div class="summary-main">
             {{ activeTab === "today" ? summary.medsDue : summary.spanCount }}
@@ -141,6 +142,8 @@ import { auth, db } from "@/firebase_conf";
 
 /* ---------------- CONSTANTS ---------------- */
 const LOGS_COL = "logs";
+const MEDS_COL = "medications";
+const LOGS_CHANGED_EVENT = "medimate:logs-changed";
 
 /* ---------------- UI STATE ---------------- */
 const tabs = [
@@ -150,8 +153,7 @@ const tabs = [
 ];
 
 const activeTab = ref("today");
-const selectedMedId = ref(null);
-
+const selectedFilter = ref("__TODAY__"); // default for today
 const meds = ref([]);
 
 /* ---------------- CHART ---------------- */
@@ -163,10 +165,15 @@ let chartModel = { type: "doughnut", data: null, options: null };
 const themeTick = ref(0);
 let themeObserver = null;
 
+/* ---------------- LOGS CHANGE TICK ---------------- */
+const logsTick = ref(0);
+function onLogsChanged() {
+  logsTick.value += 1;
+}
+
+/* ---------------- THEME COLORS ---------------- */
 function cssVar(name, fallback) {
-  const v = getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    ?.trim();
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name)?.trim();
   return v || fallback;
 }
 
@@ -200,7 +207,6 @@ function clampPct(x) {
   return Math.max(0, Math.min(100, Math.round(x)));
 }
 
-// parse YYYY-MM-DD as local date (fixes timezone off-by-1)
 function toJSDate(x) {
   if (!x) return null;
   if (typeof x?.toDate === "function") return x.toDate();
@@ -240,10 +246,7 @@ const activeTabSubtitle = computed(() => {
 
 /* ---------------- NORMALIZE MED DOC ---------------- */
 function normalizeScheduleType(raw) {
-  return String(raw || "Everyday")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+|_|-/g, "");
+  return String(raw || "Everyday").toLowerCase().trim().replace(/\s+|_|-/g, "");
 }
 
 function normalizeScheduleFromLegacy(scheduleType) {
@@ -261,7 +264,6 @@ function normalizeMed(docId, raw) {
     id: docId,
     ...raw,
     status: raw.status ?? "Active",
-    // supports both schemas
     times: Array.isArray(raw.times) ? raw.times : raw.time ? [raw.time] : [],
     schedule: raw.schedule ?? normalizeScheduleFromLegacy(raw.scheduleType),
     startDate: raw.startDate ?? null,
@@ -346,7 +348,6 @@ function buildExpectedSlotsForDate(med, dateObj) {
   const times = Array.isArray(med.times) ? med.times : [];
   const dateString = toDateStringLocal(dateObj);
 
-  // if no times, treat as single slot
   if (times.length === 0) {
     return [{ key: `${dateString}_${med.id}_NO_TIME`, time: null }];
   }
@@ -358,18 +359,17 @@ function buildLoggedKeySet(logs) {
   const set = new Set();
 
   for (const l of logs) {
-    // normal slot
-    if (l.dateString && l.medicationId && l.scheduledTimeSlot) {
-      set.add(`${l.dateString}_${l.medicationId}_${l.scheduledTimeSlot}`);
-    }
+    if (l?.id && typeof l.id === "string") set.add(l.id);
 
-    // empty or null time slot => NO_TIME
-    if (
-      l.dateString &&
-      l.medicationId &&
-      (l.scheduledTimeSlot === null || l.scheduledTimeSlot === "")
-    ) {
-      set.add(`${l.dateString}_${l.medicationId}_NO_TIME`);
+    if (l.dateString && l.medicationId) {
+      const slot =
+        l.scheduledTimeSlot === null ||
+        l.scheduledTimeSlot === "" ||
+        l.scheduledTimeSlot === undefined
+          ? "NO_TIME"
+          : l.scheduledTimeSlot;
+
+      set.add(`${l.dateString}_${l.medicationId}_${slot}`);
     }
   }
 
@@ -379,25 +379,25 @@ function buildLoggedKeySet(logs) {
 /* ---------------- FIRESTORE LOADERS ---------------- */
 async function loadMeds() {
   const uid = auth.currentUser?.uid;
-  console.log("user id", uid)
-  if (!uid) return;
-
-  // support multiple possible subcollection names
-  const snap = await getDocs(collection(db, "users", uid, "medications"));
-  if (snap.size > 0) {
-      meds.value = snap.docs.map((d) => normalizeMed(d.id, d.data()));
-      return;
-    }
+  if (!uid) {
+    meds.value = [];
+    return;
   }
-  meds.value = [];
+
+  const snap = await getDocs(collection(db, "users", uid, MEDS_COL));
+  meds.value = snap.docs.map((d) => normalizeMed(d.id, d.data()));
+}
 
 async function fetchLogsByDateStringRange(startStr, endStr, medIdOrAll) {
   const uid = auth.currentUser?.uid;
   if (!uid) return [];
 
-  const constraints = [where("dateString", ">=", startStr), where("dateString", "<=", endStr)];
+  const constraints = [
+    where("dateString", ">=", startStr),
+    where("dateString", "<=", endStr),
+  ];
 
-  if (medIdOrAll && medIdOrAll !== "__NONE__") {
+  if (medIdOrAll && !medIdOrAll.startsWith("__")) {
     constraints.push(where("medicationId", "==", medIdOrAll));
   }
 
@@ -406,11 +406,7 @@ async function fetchLogsByDateStringRange(startStr, endStr, medIdOrAll) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-/* ---------------- DROPDOWN OPTIONS ---------------- */
-const dropdownPlaceholder = computed(() =>
-  activeTab.value === "today" ? "Today's medicines" : "Active medicines"
-);
-
+/* ---------------- OPTIONS (med list under the "all" option) ---------------- */
 const medicineOptions = computed(() => {
   const activeMeds = (meds.value || []).filter((m) => (m.status || "Active") === "Active");
   const today = startOfDay(new Date());
@@ -422,20 +418,9 @@ const medicineOptions = computed(() => {
 
   list.sort((a, b) => (a.medicineName || "").localeCompare(b.medicineName || ""));
 
-  if (list.length === 0) {
-    return [
-      {
-        label: isTodayTab ? "No medicines due today" : "No active medicines found",
-        value: "__NONE__",
-        disabled: true,
-      },
-    ];
-  }
-
   return list.map((m) => ({
     label: m.medicineName || "Unknown Name",
     value: m.id,
-    disabled: false,
   }));
 });
 
@@ -443,26 +428,28 @@ const medicineOptions = computed(() => {
 const summary = ref({
   taken: 0,
   expected: 0,
-  remaining: 0, // today only
-  missed: 0, // weekly/monthly
+  remaining: 0,
+  missed: 0,
   percent: 0,
-  medsDue: 0, // today only
-  spanCount: 0, // weekly/monthly only
+  medsDue: 0,
+  spanCount: 0,
 });
 
 const todayDueList = ref([]);
 
-/* ---------------- COMPUTE SELECTED MEDS ---------------- */
+/* ---------------- MEDS TO PROCESS ---------------- */
 function getMedsToProcess() {
   const activeMeds = meds.value.filter((m) => (m.status || "Active") === "Active");
   const today = startOfDay(new Date());
   const isTodayTab = activeTab.value === "today";
 
-  if (!selectedMedId.value || selectedMedId.value === "__NONE__") {
-    return isTodayTab ? activeMeds.filter((m) => isScheduledOnDate(m, today)) : activeMeds;
-  }
+  const allKey = isTodayTab ? "__TODAY__" : "__ACTIVE__";
+  const chosen = selectedFilter.value || allKey;
 
-  return activeMeds.filter((m) => m.id === selectedMedId.value);
+  if (chosen === "__TODAY__") return activeMeds.filter((m) => isScheduledOnDate(m, today));
+  if (chosen === "__ACTIVE__") return activeMeds;
+
+  return activeMeds.filter((m) => m.id === chosen);
 }
 
 /* ---------------- CHART OPTIONS ---------------- */
@@ -503,13 +490,17 @@ function linePercentOptions(metaCounts) {
   };
 }
 
-/* ---------------- COMPUTE TABS ---------------- */
+/* ---------------- COMPUTE: TODAY ---------------- */
 async function computeToday() {
   const today = startOfDay(new Date());
   const ds = toDateStringLocal(today);
 
   const medsList = getMedsToProcess();
-  const logs = await fetchLogsByDateStringRange(ds, ds, selectedMedId.value);
+
+  const chosen = selectedFilter.value;
+  const medQueryId = chosen && !chosen.startsWith("__") ? chosen : null;
+
+  const logs = await fetchLogsByDateStringRange(ds, ds, medQueryId || "__ALL__");
   const loggedKeys = buildLoggedKeySet(logs);
 
   let totalExpected = 0;
@@ -578,15 +569,14 @@ async function computeToday() {
           labels: { color: colors.value.text },
         },
         tooltip: {
-          callbacks: {
-            label: (ctx) => `${ctx.label}: ${ctx.raw}`,
-          },
+          callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw}` },
         },
       },
     },
   };
 }
 
+/* ---------------- COMPUTE: WEEKLY ---------------- */
 async function computeWeekly() {
   todayDueList.value = [];
 
@@ -603,7 +593,11 @@ async function computeWeekly() {
   );
 
   const medsList = getMedsToProcess();
-  const logs = await fetchLogsByDateStringRange(startStr, endStr, selectedMedId.value);
+
+  const chosen = selectedFilter.value;
+  const medQueryId = chosen && !chosen.startsWith("__") ? chosen : null;
+
+  const logs = await fetchLogsByDateStringRange(startStr, endStr, medQueryId || "__ALL__");
   const loggedKeys = buildLoggedKeySet(logs);
 
   const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -677,6 +671,7 @@ async function computeWeekly() {
   };
 }
 
+/* ---------------- COMPUTE: MONTHLY ---------------- */
 async function computeMonthly() {
   todayDueList.value = [];
 
@@ -688,7 +683,11 @@ async function computeMonthly() {
   const endStr = toDateStringLocal(lastDay);
 
   const medsList = getMedsToProcess();
-  const logs = await fetchLogsByDateStringRange(startStr, endStr, selectedMedId.value);
+
+  const chosen = selectedFilter.value;
+  const medQueryId = chosen && !chosen.startsWith("__") ? chosen : null;
+
+  const logs = await fetchLogsByDateStringRange(startStr, endStr, medQueryId || "__ALL__");
   const loggedKeys = buildLoggedKeySet(logs);
 
   const labels = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"];
@@ -798,24 +797,29 @@ onMounted(() => {
     attributeFilter: ["data-theme", "class"],
   });
 
+  window.addEventListener(LOGS_CHANGED_EVENT, onLogsChanged);
+
   onAuthStateChanged(auth, async (user) => {
     if (!user) return;
     await loadMeds();
+    // set default filter on initial load
+    selectedFilter.value = activeTab.value === "today" ? "__TODAY__" : "__ACTIVE__";
     await recompute();
   });
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener(LOGS_CHANGED_EVENT, onLogsChanged);
   if (themeObserver) themeObserver.disconnect();
   if (chartInstance) chartInstance.destroy();
 });
 
 /* ---------------- WATCHERS ---------------- */
 watch(activeTab, () => {
-  selectedMedId.value = null; // show placeholder again
+  selectedFilter.value = activeTab.value === "today" ? "__TODAY__" : "__ACTIVE__";
 });
 
-watch([activeTab, selectedMedId, themeTick], () => {
+watch([activeTab, selectedFilter, themeTick, logsTick], () => {
   recompute();
 });
 </script>
@@ -861,7 +865,6 @@ watch([activeTab, selectedMedId, themeTick], () => {
   gap: 10px;
   padding: 10px 4px 0;
   margin-bottom: 10px;
-  flex-wrap: wrap;
 }
 
 .tab {
@@ -875,6 +878,7 @@ watch([activeTab, selectedMedId, themeTick], () => {
   box-shadow: var(--shadow-soft);
   transition: all 0.18s ease;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .tab:hover {
@@ -1148,9 +1152,17 @@ watch([activeTab, selectedMedId, themeTick], () => {
     grid-template-columns: 1fr;
   }
 
+  /* mobile: keep tabs in one row */
+  .tabs {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
   .tab {
-    width: 100%;
-    justify-content: center;
+    flex: 1;
+    min-width: 0;
+    padding: 10px 10px;
+    font-size: 0.98rem;
   }
 }
 
