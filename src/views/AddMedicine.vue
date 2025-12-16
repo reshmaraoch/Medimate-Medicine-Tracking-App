@@ -810,6 +810,7 @@ const timeDisplay = computed(() => {
   border-radius: 8px;
   border: 1px solid #d1d5db;
   font-size: 14px;
+  background: var(--color-bg);
 }
 
 .form-group input:focus,
