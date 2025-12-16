@@ -37,7 +37,7 @@ function toJSDate(x) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-/* ---------- schedule normalization (same as analytics) ---------- */
+/* ---------- schedule normalization ---------- */
 function normalizeScheduleType(raw) {
   return String(raw || "Everyday").toLowerCase().trim().replace(/\s+|_|-/g, "");
 }
@@ -131,6 +131,7 @@ function isScheduledOnDate(med, dateObj) {
     const dates = Array.isArray(data.dates) ? data.dates : [];
     if (dates.length === 0) return false;
 
+    // NOTE: custom schedule compares against today's local string
     const ds = todayStringLocal();
     const normalizedDates = dates.map((x) => {
       const d = toJSDate(x);
@@ -147,12 +148,12 @@ function isScheduledOnDate(med, dateObj) {
   return false;
 }
 
-/* ---------- logs taken-set builder (robust) ---------- */
+/* ---------- logs taken-set builder ---------- */
 function buildTakenSet(logDocs) {
   const set = new Set();
-  for (const doc of logDocs) {
-    const d = doc.data ? doc.data() : doc;
-    const id = doc.id || d?.id;
+  for (const docSnap of logDocs) {
+    const d = docSnap.data ? docSnap.data() : docSnap;
+    const id = docSnap.id || d?.id;
 
     if (id && typeof id === "string") set.add(id);
 
@@ -184,7 +185,8 @@ async function loadTodaySlots() {
 
   const meds = medsSnap.docs
     .map((d) => normalizeMed(d.id, d.data()))
-    .filter((m) => (m.status || "Active") !== "Deleted" && (m.status || "Active") === "Active")
+    .filter((m) => (m.status || "Active") === "Active")
+    .filter((m) => (m.status || "Active") !== "Deleted")
     .filter((m) => isScheduledOnDate(m, today));
 
   const logsSnap = await getDocs(
@@ -249,11 +251,14 @@ const grouped = computed(() => {
 
 /* ACTIONS */
 async function handleLog(slot) {
+  const dateString = todayStringLocal();
+  const scheduledTimeSlot = slot.slotKeyTime === "NO_TIME" ? "" : slot.slotKeyTime;
+
   await logDose({
-    ...slot,
-    scheduledTimeSlot: slot.slotKeyTime === "NO_TIME" ? "" : slot.slotKeyTime,
-    dateString: todayStringLocal(),
     medicationId: slot.medications.id,
+    dateString,
+    scheduledTimeSlot,
+    medications: slot.medications, // keep (service supports both)
   });
 
   await loadTodaySlots();
@@ -261,11 +266,14 @@ async function handleLog(slot) {
 }
 
 async function handleUndo(slot) {
+  const dateString = todayStringLocal();
+  const scheduledTimeSlot = slot.slotKeyTime === "NO_TIME" ? "" : slot.slotKeyTime;
+
   await unLogDose({
-    ...slot,
-    scheduledTimeSlot: slot.slotKeyTime === "NO_TIME" ? "" : slot.slotKeyTime,
-    dateString: todayStringLocal(),
     medicationId: slot.medications.id,
+    dateString,
+    scheduledTimeSlot,
+    medications: slot.medications,
   });
 
   await loadTodaySlots();
@@ -289,7 +297,6 @@ function displayTime(slot) {
 </script>
 
 <template>
-  <!-- ✅ same outer width as analytics -->
   <div class="logger-container">
     <section class="panel card">
       <header class="header">
@@ -310,7 +317,7 @@ function displayTime(slot) {
       <div v-if="viewMode === 'time'">
         <div
           v-for="slot in chronological"
-          :key="slot.medications.id + slot.slotKeyTime"
+          :key="slot.medications.id + '_' + slot.slotKeyTime"
           class="dose-row"
         >
           <div class="dose-left">
@@ -353,7 +360,7 @@ function displayTime(slot) {
 
           <div
             v-for="dose in group.items"
-            :key="dose.medications.id + dose.slotKeyTime"
+            :key="dose.medications.id + '_' + dose.slotKeyTime"
             class="dose-row"
           >
             <div class="dose-left">
@@ -390,15 +397,12 @@ function displayTime(slot) {
         </div>
       </div>
 
-      <div v-if="slots.length === 0" class="empty">
-        No medicines due today.
-      </div>
+      <div v-if="slots.length === 0" class="empty">No medicines due today.</div>
     </section>
   </div>
 </template>
 
 <style scoped>
-/* ✅ Match analytics container width and padding */
 .logger-container {
   max-width: 1100px;
   margin: 0 auto;
@@ -406,12 +410,10 @@ function displayTime(slot) {
   color: var(--color-text);
 }
 
-/* panel style aligned with analytics cards */
 .panel {
   padding: 14px 14px 16px;
 }
 
-/* Header */
 .header {
   display: flex;
   justify-content: space-between;
@@ -447,7 +449,6 @@ function displayTime(slot) {
   margin-left: auto;
 }
 
-/* Select */
 .select {
   background: var(--color-card);
   border: 1px solid var(--color-border);
@@ -473,7 +474,6 @@ function displayTime(slot) {
   font-weight: 950;
 }
 
-/* Rows */
 .dose-row {
   display: flex;
   justify-content: space-between;
@@ -527,7 +527,6 @@ function displayTime(slot) {
   flex-shrink: 0;
 }
 
-/* Buttons */
 .btn {
   border-radius: 999px;
   padding: 0.55rem 1.05rem;
@@ -565,7 +564,6 @@ function displayTime(slot) {
   font-weight: 800;
 }
 
-/* ✅ Mobile friendly */
 @media (max-width: 720px) {
   .logger-container {
     padding: 0 10px 24px;
@@ -607,7 +605,6 @@ function displayTime(slot) {
   }
 }
 
-/* ✅ Extra small */
 @media (max-width: 480px) {
   .dose-left {
     flex-direction: column;

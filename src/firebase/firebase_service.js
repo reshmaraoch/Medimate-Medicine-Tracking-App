@@ -81,10 +81,6 @@ export const deleteMedById = async (id) => {
   }
 };
 
-function todayString() {
-  return new Date().toISOString().split("T")[0];
-}
-
 function normalizeNumber(value) {
   if (typeof value === "number") return value;
   if (typeof value === "string") {
@@ -94,16 +90,25 @@ function normalizeNumber(value) {
   return 0;
 }
 
-/* LOG DOSE */
+/* -------------------------
+   LOG DOSE
+------------------------- */
 export async function logDose(slot) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Not authenticated");
 
-  const med = slot.medications;
-  const dateStr = todayString();
-  const logId = `${dateStr}_${med.id}_${slot.time}`;
+  const medId = slot.medicationId || slot.medications?.id;
+  if (!medId) throw new Error("Missing medicationId");
 
-  const medRef = doc(db, "users", uid, "medications", med.id);
+  const dateStr = slot.dateString;
+  if (!dateStr) throw new Error("Missing dateString");
+
+  const rawSlot = slot.scheduledTimeSlot ?? slot.time ?? "";
+  const slotKey = rawSlot && String(rawSlot).trim() ? String(rawSlot).trim() : "NO_TIME";
+
+  const logId = `${dateStr}_${medId}_${slotKey}`;
+
+  const medRef = doc(db, "users", uid, "medications", medId);
   const logRef = doc(db, "users", uid, "logs", logId);
 
   await runTransaction(db, async (tx) => {
@@ -126,8 +131,8 @@ export async function logDose(slot) {
     }
 
     tx.set(logRef, {
-      medicationId: med.id,
-      scheduledTimeSlot: slot.time,
+      medicationId: medId,
+      scheduledTimeSlot: slotKey === "NO_TIME" ? "" : slotKey,
       dateString: dateStr,
       action: "TAKEN",
       takenAt: Timestamp.now(),
@@ -144,17 +149,24 @@ export async function logDose(slot) {
 }
 
 /* -------------------------
-   UNDO DOSE
+   UNDO DOSE 
 ------------------------- */
 export async function unLogDose(slot) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Not authenticated");
 
-  const med = slot.medications;
-  const dateStr = todayString();
-  const logId = `${dateStr}_${med.id}_${slot.time}`;
+  const medId = slot.medicationId || slot.medications?.id;
+  if (!medId) throw new Error("Missing medicationId");
 
-  const medRef = doc(db, "users", uid, "medications", med.id);
+  const dateStr = slot.dateString;
+  if (!dateStr) throw new Error("Missing dateString");
+
+  const rawSlot = slot.scheduledTimeSlot ?? slot.time ?? "";
+  const slotKey = rawSlot && String(rawSlot).trim() ? String(rawSlot).trim() : "NO_TIME";
+
+  const logId = `${dateStr}_${medId}_${slotKey}`;
+
+  const medRef = doc(db, "users", uid, "medications", medId);
   const logRef = doc(db, "users", uid, "logs", logId);
 
   await runTransaction(db, async (tx) => {
