@@ -56,7 +56,8 @@ const router = createRouter({
     {
       path: "/edit-medicine/:id",
       name: "EditMedicine",
-      component: () => import("@/views/EditMedicine.vue"),
+      // component: () => import("@/views/EditMedicine.vue"),
+      component: AddMedicine,
       props: true,
       meta: { requiresAuth: true },
     },

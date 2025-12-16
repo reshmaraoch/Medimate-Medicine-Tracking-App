@@ -1,13 +1,20 @@
 <!-- eslint-disable no-unused-vars -->
 <script setup>
-import { ref, computed, nextTick } from "vue";
+import { ref, onMounted, computed, nextTick } from "vue";
 // import Tesseract from "tesseract.js";
 import { saveMeds } from "@/firebase/firebase_service.js";
 import router from "@/router";
 import { usePrescriptionOCR } from "@/composables/usePrescriptionOCR";
 import { mapForm, mapOCRScheduleToOption } from "@/ocr/RxParser";
 import { calculateNextScheduledDose } from "@/utils/scheduleUtils";
+import { useRoute } from "vue-router";
+import { updateMeds, getMedsById } from '@/firebase/firebase_service.js'
 
+
+const route = useRoute();
+
+const isEditMode = computed(() => !!route.params.id);
+const editMedId = computed(() => route.params.id || null);
 
 const { ocrResults, loading: ocrLoading, error: ocrError, scanImage } = usePrescriptionOCR();
 
@@ -16,6 +23,18 @@ const cameraInput = ref(null);
 
 const newTime = ref("");
 
+const errors = ref({
+  doseQuantity: false,
+  currentInventory: false,
+  refillThreshold: false,
+  take: false,
+});
+
+const isInventoryEntered = computed(() => {
+  return form.value.currentInventory !== null &&
+    form.value.currentInventory !== "" &&
+    !errors.value.currentInventory;
+});
 function openFilePicker() {
   fileInput.value?.click();
 }
@@ -94,12 +113,13 @@ const showConfirm = ref(false);
 const derivedUnit = computed(() => {
   switch (form.value.form) {
     case "Tablet":
+      return "Tablet";
     case "Capsule":
-      return "pill";
+      return "Pill";
     case "Syrup":
       return "ml";
     case "Injection":
-      return "unit";
+      return "Unit";
     default:
       return "";
   }
@@ -113,6 +133,7 @@ const derivedUnit = computed(() => {
 
 function selectOCRMedication(med) {
   // Fill form fields
+  if (isEditMode.value) return;
   form.value.medicineName = med.name || ''
   form.value.doseQuantity = med.dosage || ''
 
@@ -145,6 +166,10 @@ const openDatePicker = (event) => {
 
 // ---------- FORM FLOW ----------
 const openConfirmation = () => {
+  if (isInventoryEntered.value && (form.value.refillThreshold === null || form.value.refillThreshold === "")) {
+    alert("Please enter a refill threshold when inventory is provided.");
+    return;
+  }
   if (!form.value.medicineName || !form.value.form || !form.value.startDate) {
     console.log(form.value.medicineName, form.value.form, form.value.startDate)
     alert("Please fill required fields (Name, Type, Start Date).");
@@ -167,8 +192,16 @@ const saveMedicationToDB = async () => {
       unit: derivedUnit.value || null,
       status: "Active",
       // have to make soft delete
-      currentInventory: form.value.currentInventory,
-      refillThreshold: form.value.refillThreshold,
+      // currentInventory: form.value.currentInventory,
+      // refillThreshold: form.value.refillThreshold,
+      // Inventory logic
+      currentInventory: isInventoryEntered.value
+        ? Number(form.value.currentInventory)
+        : null,
+
+      refillThreshold: isInventoryEntered.value
+        ? Number(form.value.refillThreshold)
+        : null,
       doseQuantity: form.value.doseQuantity,
       take: form.value.take,
       times: form.value.times,
@@ -180,8 +213,16 @@ const saveMedicationToDB = async () => {
       expiryDate: form.value.expiryDate || null,
     };
 
-    await saveMeds(payload);
-    alert("Medication saved successfully!");
+    // await saveMeds(payload);
+    if (isEditMode.value) {
+      await updateMeds(editMedId.value, payload);
+      alert("Medication updated successfully!");
+    } else {
+      await saveMeds(payload);
+      alert("Medication saved successfully!");
+    }
+
+    // alert("Medication saved successfully!");
 
     showConfirm.value = false;
     Object.keys(form.value).forEach((k) => (form.value[k] = ""));
@@ -248,6 +289,74 @@ function addTime() {
 function removeTime(time) {
   form.value.times = form.value.times.filter(t => t !== time);
 }
+function markInvalidIfNonNumeric(field, event) {
+  const value = event.target.value;
+
+  // allow empty (optional fields)
+  if (value === "") {
+    errors.value[field] = false;
+    return;
+  }
+
+  // allow integers or decimals (non-negative)
+  const isValid = /^\d+(\.\d+)?$/.test(value);
+
+  errors.value[field] = !isValid;
+}
+
+function editMedication(dbMed) {
+  console.log(dbMed.form);
+  return {
+
+    medicineName: dbMed.medicineName ?? "",
+
+    description: dbMed.description ?? "",
+
+    form: dbMed.form ?? "",
+
+    // numeric fields (null-safe)
+    doseQuantity: dbMed.doseQuantity ?? null,
+    currentInventory: dbMed.currentInventory ?? null,
+    refillThreshold: dbMed.refillThreshold ?? null,
+    take: dbMed.take ?? null,
+
+    // schedule (normalized)
+    schedule: {
+      type: dbMed.schedule?.type ?? "Everyday",
+      data: dbMed.schedule?.data ?? {},
+    },
+
+    // times normalization
+    times: Array.isArray(dbMed.times)
+      ? [...dbMed.times]
+      : dbMed.time
+        ? [dbMed.time]
+        : [],
+
+    startDate: dbMed.startDate ?? "",
+    endDate: dbMed.endDate ?? null,
+
+    status: dbMed.status ?? "Active",
+    nextScheduledDose: dbMed.nextScheduledDose ?? null,
+    expiryDate: dbMed.expiryDate ?? null,
+  };
+}
+onMounted(async () => {
+  if (!isEditMode.value) return;
+
+  try {
+    const dbMed = await getMedsById(editMedId.value);
+    form.value = editMedication(dbMed);
+  } catch (err) {
+    console.error("Failed to hydrate medication", err);
+    alert("Failed to load medication for editing.");
+    router.push("/view-meds");
+  }
+});
+function goBack() {
+  router.push("/view-meds");
+}
+
 </script>
 
 
@@ -256,63 +365,73 @@ function removeTime(time) {
   <div class="add-medicine-container">
     <!-- HEADER / OCR SECTION -->
     <section class="hero-card">
-      <h1>Add a Medication to Track</h1>
-      <p class="hero-text">
-        You can upload a prescription to auto-fill details, or enter them manually below.
-      </p>
+      <!-- <h1>Add a Medication to Track</h1> -->
+      <h1>
+        {{ isEditMode ? "Edit Medication" : "Add a Medication to Track" }}
+      </h1>
+      <section v-if="!isEditMode">
+        <p class="hero-text">
+          You can upload a prescription to auto-fill details, or enter them manually below.
+        </p>
 
-      <!-- OCR Upload -->
-      <!-- <div class="ocr-section">
+        <!-- OCR Upload -->
+        <!-- <div class="ocr-section">
         <input type="file" accept="image/*" @change="onImageUpload" />
       </div> -->
 
-      <div class="ocr-actions">
-        <!-- Upload button -->
-        <button class="icon-btn" title="Upload prescription" @click="openFilePicker">
-          ⬆️
-        </button>
+        <div class="ocr-actions">
+          <!-- Upload button -->
+          <button class="icon-btn" title="Upload prescription" @click="openFilePicker">
+            ⬆️
+          </button>
 
-        <!-- Camera button -->
-        <button class="icon-btn" title="Scan using camera" @click="openCamera">
-          📷
-        </button>
+          <!-- Camera button -->
+          <button class="icon-btn" title="Scan using camera" @click="openCamera">
+            📷
+          </button>
 
-        <!-- Hidden upload input -->
-        <input ref="fileInput" type="file" accept="image/*" hidden @change="handleImageSelected" />
+          <!-- Hidden upload input -->
+          <input ref="fileInput" type="file" accept="image/*" hidden @change="handleImageSelected" />
 
-        <!-- Hidden camera input -->
-        <input ref="cameraInput" type="file" accept="image/*" capture="environment" hidden
-          @change="handleImageSelected" />
-      </div>
-
-
-      <p v-if="ocrLoading">Scanning prescription…</p>
-      <p v-if="ocrError" class="error">{{ ocrError }}</p>
-
-      <!-- OCR Cards -->
-      <section v-if="ocrResults.length" class="ocr-results">
-        <h3>Select a medication</h3>
-
-        <div class="ocr-grid">
-          <div v-for="med in ocrResults" :key="med.id" class="ocr-card" @click="selectOCRMedication(med)">
-            <h4 class="ocr-title">{{ med.name || 'Unnamed medication' }}</h4>
-
-            <p><strong>Dosage:</strong> {{ med.dosage || '—' }}</p>
-            <p><strong>Schedule:</strong> {{ med.schedule || '—' }}</p>
-          </div>
+          <!-- Hidden camera input -->
+          <input ref="cameraInput" type="file" accept="image/*" capture="environment" hidden
+            @change="handleImageSelected" />
         </div>
+
+
+        <p v-if="ocrLoading">Scanning prescription…</p>
+        <p v-if="ocrError" class="error">{{ ocrError }}</p>
+
+        <!-- OCR Cards -->
+        <section v-if="ocrResults.length" class="ocr-results">
+          <h3>Select a medication</h3>
+
+          <div class="ocr-grid">
+            <div v-for="med in ocrResults" :key="med.id" class="ocr-card" @click="selectOCRMedication(med)">
+              <h4 class="ocr-title">{{ med.name || 'Unnamed medication' }}</h4>
+
+              <p><strong>Dosage:</strong> {{ med.dosage || '—' }}</p>
+              <p><strong>Schedule:</strong> {{ med.schedule || '—' }}</p>
+            </div>
+          </div>
+        </section>
+
       </section>
-
     </section>
-
     <!-- Divider -->
-    <div class="section-divider">
+    <div class="section-divider" v-if="!isEditMode">
       <span>OR ENTER DETAILS MANUALLY</span>
     </div>
 
     <!-- MANUAL FORM -->
     <section class="form-card" ref="formSection" id="add-medicine-form">
-      <h2>Add Details Manually</h2>
+      <div class="form-header">
+        <button v-if="isEditMode" type="button" class="back-btn" @click="goBack">
+          ← Back
+        </button>
+      </div>
+
+      <h2>{{ isEditMode ? "Update Details" : "Add Details Manually" }}</h2>
 
       <form @submit.prevent="openConfirmation" class="medicine-form">
         <div class="form-group">
@@ -343,27 +462,77 @@ function removeTime(time) {
         </div> -->
 
         <div class="form-group">
-          <label>Dose Quantity : <span>Please only enter number quantity</span></label>
+          <label>Dosage : <span>Please only enter number quantity</span></label>
           <!-- <input v-model="form.doseQuantity" type="text" placeholder="e.g., (500) mg, (10) pills" /> -->
           <div class="dose-input-wrapper">
-            <input v-model.number="form.doseQuantity" type="number" min=0 placeholder="e.g.: 1">
+            <!-- <input v-model.number="form.doseQuantity" type="number" min=0 placeholder="e.g.: 1"> -->
+            <!-- <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span> -->
+            <input v-model="form.doseQuantity" type="text" placeholder="e.g.: 1"
+              :class="{ 'input-error': errors.doseQuantity }"
+              @input="markInvalidIfNonNumeric('doseQuantity', $event)" />
             <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
+            <small v-if="errors.doseQuantity" class="error-text">
+              Please enter Numbers >= 0 only
+            </small>
           </div>
         </div>
 
         <div class="form-group">
           <label>Inventory</label>
-          <input v-model="form.currentInventory" type="text" placeholder="e.g., 150 ml bottle or 150 pills" />
+          <!-- <input v-model="form.currentInventory" type="text" placeholder="e.g., 150 ml bottle or 150 pills" /> -->
+          <div class="dose-input-wrapper">
+            <input v-model="form.currentInventory" type="text" :class="{ 'input-error': errors.currentInventory }"
+              @input="markInvalidIfNonNumeric('currentInventory', $event)" />
+            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
+            <small v-if="errors.currentInventory" class="error-text">
+              Please enter Numbers >= 0 only
+            </small>
+          </div>
         </div>
 
-        <div class="form-group">
-          <label>Refill threshold: Alert when stock is under this amount</label>
-          <input v-model="form.refillThreshold" type="text" placeholder="e.g., Alert when stock <= 30 ml or 30 pills" />
-        </div>
+        <!-- <div class="form-group"> -->
+        <!-- <label>Refil Alert</label> -->
+        <!-- <input v-model="form.refillThreshold" type="text" placeholder="e.g., Alert when stock <= 30 ml or 30 pills" /> -->
+        <!-- <div class="dose-input-wrapper"> -->
+        <!-- <input v-model="form.refillThreshold" type="text" :class="{ 'input-error': errors.refillThreshold }" -->
+        <!-- @input="markInvalidIfNonNumeric('refillThreshold', $event)" /> -->
+        <!-- <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span> -->
+        <!-- <small v-if="errors.refillThreshold" class="error-text"> -->
+        <!-- Please enter Numbers >= 0 only -->
+        <!-- </small> -->
+        <!-- </div> -->
+        <!-- </div> -->
 
         <div class="form-group">
-          <label>Take : How much do you take per dose? </label>
-          <input v-model="form.take" type="text" placeholder="e.g., 1 ml per spoon or 1 pill" />
+          <label>
+            Refill Alert
+            <span v-if="isInventoryEntered" class="required">*</span>
+          </label>
+
+          <div class="dose-input-wrapper">
+            <input v-model="form.refillThreshold" type="text" :disabled="!isInventoryEntered"
+              :class="{ 'input-error': errors.refillThreshold }"
+              @input="markInvalidIfNonNumeric('refillThreshold', $event)" />
+            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
+          </div>
+
+          <small v-if="isInventoryEntered" class="helper-text">
+            Required when inventory is provided
+          </small>
+        </div>
+
+
+        <div class="form-group">
+          <label>What dose will you take? <span class="required">*</span></label>
+          <!-- <input v-model="form.take" type="text" placeholder="e.g., 1 ml per spoon or 1 pill" /> -->
+          <div class="dose-input-wrapper">
+            <input v-model="form.take" type="text" :class="{ 'input-error': errors.take }"
+              @input="markInvalidIfNonNumeric('take', $event)" />
+            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
+            <small v-if="errors.take" class="error-text">
+              Please enter Numbers >= 0 only
+            </small>
+          </div>
         </div>
 
         <!-- <div class="form-group"> -->
@@ -486,6 +655,7 @@ function removeTime(time) {
           <li><strong>Name:</strong> {{ form.medicineName }}</li>
           <li><strong>Description:</strong> {{ form.description || "—" }}</li>
           <li><strong>Dosage:</strong> {{ form.doseQuantity || "—" }}</li>
+          <li><strong>What dose will you take: </strong> {{ form.take || "—" }}</li>
           <li><strong>Type:</strong> {{ form.form }}</li>
           <li><strong>Schedule:</strong> {{ form.schedule || "—" }}</li>
           <li><strong>Time:</strong> {{ form.times || "—" }}</li>
@@ -515,6 +685,27 @@ function removeTime(time) {
   flex-direction: column;
   gap: 32px;
 }
+
+.form-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.back-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-primary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.back-btn:hover {
+  text-decoration: underline;
+}
+
 
 /* Hero / OCR */
 .hero-card {
@@ -903,5 +1094,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border: none;
   cursor: pointer;
   color: #dc2626;
+}
+
+.input-error {
+  border-color: #dc2626 !important;
+  background-color: rgba(220, 38, 38, 0.05);
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 2px;
 }
 </style>

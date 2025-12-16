@@ -11,6 +11,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "@/firebase_conf";
+import { calculateNextScheduledDose } from "@/utils/scheduleUtils";
 
 const getUserID = () => {
   const uid = auth.currentUser?.uid;
@@ -90,25 +91,133 @@ function normalizeNumber(value) {
   return 0;
 }
 
+// function getAfterSlotDate(slotTime) {
+//   const [hh, mm] = slotTime.split(":").map(Number);
+//   const d = new Date();
+//   d.setHours(hh, mm + 1, 0, 0); // +1 minute to skip logged slot
+//   return d;
+// }
+
+function buildFromDateTime(slot) {
+  const d = new Date();
+  let slot_time = "";
+  // console.log(typeof slot.time);
+  if (slot.time === null || slot.time === undefined || slot.time === "")
+    slot_time = "09:00";
+  else slot_time = slot.time;
+  const [hh, mm] = slot_time.split(":").map(Number);
+  d.setHours(hh, mm, 0, 0);
+
+  // move past the logged slot
+  d.setSeconds(d.getSeconds() + 1);
+
+  return d;
+}
+
 /* -------------------------
    LOG DOSE
 ------------------------- */
+// export async function logDose(slot) {
+//   const uid = auth.currentUser?.uid;
+//   if (!uid) throw new Error("Not authenticated");
+
+//   const medId = slot.medicationId || slot.medications?.id;
+//   if (!medId) throw new Error("Missing medicationId");
+
+//   const dateStr = slot.dateString;
+//   if (!dateStr) throw new Error("Missing dateString");
+
+//   const rawSlot = slot.scheduledTimeSlot ?? slot.time ?? "";
+//   const slotKey =
+//     rawSlot && String(rawSlot).trim() ? String(rawSlot).trim() : "NO_TIME";
+
+//   const logId = `${dateStr}_${medId}_${slotKey}`;
+
+//   const medRef = doc(db, "users", uid, "medications", medId);
+//   const logRef = doc(db, "users", uid, "logs", logId);
+
+//   await runTransaction(db, async (tx) => {
+//     const medSnap = await tx.get(medRef);
+//     if (!medSnap.exists()) throw new Error("Medication not found");
+
+//     const medData = medSnap.data();
+
+//     const currentInventory = normalizeNumber(medData.currentInventory);
+//     const doseQuantity = normalizeNumber(medData.doseQuantity);
+
+//     const hasInventory =
+//       medData.currentInventory !== null &&
+//       medData.currentInventory !== undefined &&
+//       !isNaN(medData.currentInventory) &&
+//       !isNaN(doseQuantity);
+
+//     if (hasInventory && currentInventory < doseQuantity) {
+//       throw new Error("Not enough inventory");
+//     }
+//     const fromDate = getAfterSlotDate(slot.time);
+
+//     const nextDose = calculateNextScheduledDose(
+//       {
+//         schedule: medData.schedule,
+//         times: medData.times,
+//       },
+//       fromDate
+//     );
+
+//     tx.set(logRef, {
+//       medicationId: medId,
+//       scheduledTimeSlot: slotKey === "NO_TIME" ? "" : slotKey,
+//       dateString: dateStr,
+//       action: "TAKEN",
+//       takenAt: Timestamp.now(),
+//       dosageTaken: doseQuantity,
+//     });
+
+//     // const nextDose = calculateNextScheduledDose({
+//     //   schedule: medData.schedule,
+//     //   times: medData.times,
+//     //   fromDateTime: new Date(),
+//     // });
+
+//     // if (hasInventory) {
+//     //   tx.update(medRef, {
+//     //     currentInventory: currentInventory - doseQuantity,
+//     //     updatedAt: Timestamp.now(),
+//     //   });
+//     // }
+//     // ---------------
+//     // if (hasInventory) {
+//     //   tx.update(medRef, {
+//     //     ...(medData.currentInventory != null && {
+//     //       currentInventory: currentInventory - doseQuantity,
+//     //     }),
+//     //     nextScheduledDose: nextDose,
+//     //     updatedAt: Timestamp.now(),
+//     //   });
+//     // }
+//     // ---------------
+//     const updates = {
+//       nextScheduledDose: nextDose,
+//       updatedAt: Timestamp.now(),
+//     };
+
+//     if (hasInventory) {
+//       updates.currentInventory = currentInventory - doseQuantity;
+//     }
+
+//     tx.update(medRef, updates);
+//   });
+// }
 export async function logDose(slot) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Not authenticated");
 
-  const medId = slot.medicationId || slot.medications?.id;
-  if (!medId) throw new Error("Missing medicationId");
-
+  const med = slot.medications;
   const dateStr = slot.dateString;
-  if (!dateStr) throw new Error("Missing dateString");
+  console.log(dateStr);
+  const logId = `${dateStr}_${med.id}_${slot.time}`;
 
-  const rawSlot = slot.scheduledTimeSlot ?? slot.time ?? "";
-  const slotKey = rawSlot && String(rawSlot).trim() ? String(rawSlot).trim() : "NO_TIME";
-
-  const logId = `${dateStr}_${medId}_${slotKey}`;
-
-  const medRef = doc(db, "users", uid, "medications", medId);
+  const medRef = doc(db, "users", uid, "medications", med.id);
   const logRef = doc(db, "users", uid, "logs", logId);
 
   await runTransaction(db, async (tx) => {
@@ -117,56 +226,146 @@ export async function logDose(slot) {
 
     const medData = medSnap.data();
 
-    const currentInventory = normalizeNumber(medData.currentInventory);
-    const doseQuantity = normalizeNumber(medData.doseQuantity);
-
     const hasInventory =
-      medData.currentInventory !== null &&
-      medData.currentInventory !== undefined &&
-      !isNaN(medData.currentInventory) &&
-      !isNaN(doseQuantity);
+      medData.currentInventory != null && medData.doseQuantity != null;
 
-    if (hasInventory && currentInventory < doseQuantity) {
-      throw new Error("Not enough inventory");
+    let currentInventory = null;
+    let doseQuantity = null;
+
+    if (hasInventory) {
+      currentInventory = normalizeNumber(medData.currentInventory);
+      doseQuantity = normalizeNumber(medData.doseQuantity);
+
+      if (currentInventory < doseQuantity) {
+        throw new Error("Not enough inventory");
+      }
     }
 
+    const fromDateTime = buildFromDateTime(slot);
+    console.log(fromDateTime);
+    const nextDose = calculateNextScheduledDose({
+      schedule: medData.schedule,
+      times: medData.times,
+      fromDateTime,
+    });
+
+    // Log entry
     tx.set(logRef, {
-      medicationId: medId,
-      scheduledTimeSlot: slotKey === "NO_TIME" ? "" : slotKey,
+      medicationId: med.id,
+      scheduledTimeSlot: slot.time,
       dateString: dateStr,
       action: "TAKEN",
       takenAt: Timestamp.now(),
-      dosageTaken: doseQuantity,
+      dosageTaken: doseQuantity ?? null,
     });
 
+    // Medication update (ALWAYS update nextScheduledDose)
+    const updates = {
+      nextScheduledDose: nextDose,
+      updatedAt: Timestamp.now(),
+    };
+
     if (hasInventory) {
-      tx.update(medRef, {
-        currentInventory: currentInventory - doseQuantity,
-        updatedAt: Timestamp.now(),
-      });
+      updates.currentInventory = currentInventory - doseQuantity;
     }
+
+    tx.update(medRef, updates);
   });
 }
 
 /* -------------------------
    UNDO DOSE 
 ------------------------- */
+// export async function unLogDose(slot) {
+//   const uid = auth.currentUser?.uid;
+//   if (!uid) throw new Error("Not authenticated");
+
+//   const medId = slot.medicationId || slot.medications?.id;
+//   if (!medId) throw new Error("Missing medicationId");
+
+//   const dateStr = slot.dateString;
+//   if (!dateStr) throw new Error("Missing dateString");
+
+//   const rawSlot = slot.scheduledTimeSlot ?? slot.time ?? "";
+//   const slotKey =
+//     rawSlot && String(rawSlot).trim() ? String(rawSlot).trim() : "NO_TIME";
+
+//   const logId = `${dateStr}_${medId}_${slotKey}`;
+
+//   const medRef = doc(db, "users", uid, "medications", medId);
+//   const logRef = doc(db, "users", uid, "logs", logId);
+
+//   await runTransaction(db, async (tx) => {
+//     const medSnap = await tx.get(medRef);
+//     if (!medSnap.exists()) throw new Error("Medication not found");
+
+//     const medData = medSnap.data();
+//     const doseQuantity = normalizeNumber(medData.doseQuantity);
+//     const currentInventory = normalizeNumber(medData.currentInventory);
+
+//     const hasInventory =
+//       medData.currentInventory !== null &&
+//       medData.currentInventory !== undefined &&
+//       !isNaN(medData.currentInventory) &&
+//       !isNaN(doseQuantity);
+
+//     tx.delete(logRef);
+
+//     // const nextDose = calculateNextScheduledDose({
+//     //   schedule: medData.schedule,
+//     //   times: medData.times,
+//     //   fromDateTime: new Date(),
+//     // });
+
+//     // if (hasInventory) {
+//     //   tx.update(medRef, {
+//     //     ...(medData.currentInventory != null && {
+//     //       currentInventory: currentInventory + doseQuantity,
+//     //     }),
+//     //     nextScheduledDose: nextDose,
+//     //     updatedAt: Timestamp.now(),
+//     //   });
+//     // }
+
+//     // Recompute next dose from NOW
+//     const nextDose = calculateNextScheduledDose(
+//       {
+//         schedule: medData.schedule,
+//         times: medData.times,
+//       },
+//       new Date()
+//     );
+
+//     const updates = {
+//       nextScheduledDose: nextDose,
+//       updatedAt: Timestamp.now(),
+//     };
+
+//     if (hasInventory) {
+//       updates.currentInventory = currentInventory + doseQuantity;
+//     }
+
+//     tx.update(medRef, updates);
+
+//     // if (hasInventory) {
+//     //   tx.update(medRef, {
+//     //     currentInventory: currentInventory + doseQuantity,
+//     //     updatedAt: Timestamp.now(),
+//     //   });
+//     // }
+//   });
+// }
+
 export async function unLogDose(slot) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Not authenticated");
 
-  const medId = slot.medicationId || slot.medications?.id;
-  if (!medId) throw new Error("Missing medicationId");
-
+  const med = slot.medications;
   const dateStr = slot.dateString;
-  if (!dateStr) throw new Error("Missing dateString");
+  console.log(dateStr);
+  const logId = `${dateStr}_${med.id}_${slot.time}`;
 
-  const rawSlot = slot.scheduledTimeSlot ?? slot.time ?? "";
-  const slotKey = rawSlot && String(rawSlot).trim() ? String(rawSlot).trim() : "NO_TIME";
-
-  const logId = `${dateStr}_${medId}_${slotKey}`;
-
-  const medRef = doc(db, "users", uid, "medications", medId);
+  const medRef = doc(db, "users", uid, "medications", med.id);
   const logRef = doc(db, "users", uid, "logs", logId);
 
   await runTransaction(db, async (tx) => {
@@ -174,22 +373,39 @@ export async function unLogDose(slot) {
     if (!medSnap.exists()) throw new Error("Medication not found");
 
     const medData = medSnap.data();
-    const doseQuantity = normalizeNumber(medData.doseQuantity);
-    const currentInventory = normalizeNumber(medData.currentInventory);
 
     const hasInventory =
-      medData.currentInventory !== null &&
-      medData.currentInventory !== undefined &&
-      !isNaN(medData.currentInventory) &&
-      !isNaN(doseQuantity);
+      medData.currentInventory != null && medData.doseQuantity != null;
 
-    tx.delete(logRef);
+    let currentInventory = null;
+    let doseQuantity = null;
 
     if (hasInventory) {
-      tx.update(medRef, {
-        currentInventory: currentInventory + doseQuantity,
-        updatedAt: Timestamp.now(),
-      });
+      currentInventory = normalizeNumber(medData.currentInventory);
+      doseQuantity = normalizeNumber(medData.doseQuantity);
     }
+
+    // Delete log
+    tx.delete(logRef);
+
+    // Recompute next dose from NOW
+    const nextDose = calculateNextScheduledDose(
+      {
+        schedule: medData.schedule,
+        times: medData.times,
+      },
+      new Date()
+    );
+
+    const updates = {
+      nextScheduledDose: nextDose,
+      updatedAt: Timestamp.now(),
+    };
+
+    if (hasInventory) {
+      updates.currentInventory = currentInventory + doseQuantity;
+    }
+
+    tx.update(medRef, updates);
   });
 }
