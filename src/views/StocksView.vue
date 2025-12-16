@@ -31,8 +31,8 @@ onMounted(loadMeds)
            <h3 class="section-title">Medications</h3>
            <div class="stocks">
                 <template v-if="medications.length">
-                    <div class="stock" v-for="med in medications" :key="med.id">
-                        <div class="stock-card">
+                    <div v-for="med in medications" :key="med.id">
+                        <div v-if="med.currentInventory" class="stock-card">
                             <div class="stock-title">
                                 <div>
                                     <p>{{ med.medicineName }}</p>
@@ -45,7 +45,7 @@ onMounted(loadMeds)
                             <div class="stack-description">
                                 <p v-if=" med.currentInventory <= parseInt(med.refillThreshold) " class="low-stock-warning">
                                         ⚠️ Low stock: ({{ med.currentInventory }}
-                        {{ med.unit || "" }} remaining)
+                            {{ med.unit || "" }} remaining)
                                 </p>
                                 <p v-else>
                                         Stock: {{  med.currentInventory || "-"}}
@@ -111,16 +111,6 @@ onMounted(loadMeds)
   gap: 10px;
 }
 
-
-.stock {
-  background: var(--color-bg);
-  padding: 10px;
-  width: 100%;
-  min-height: 150px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-}
-
 .stock:hover {
   box-shadow: var(--shadow-soft);
   transition: box-shadow 0.25s ease;
@@ -128,6 +118,12 @@ onMounted(loadMeds)
 
 .stock-card {
   display: block;
+  background: var(--color-bg);
+  padding: 10px;
+  width: 100%;
+  min-height: 150px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
 }
 
 .stock-title {
