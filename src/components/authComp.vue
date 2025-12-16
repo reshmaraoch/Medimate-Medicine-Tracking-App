@@ -106,7 +106,7 @@ function goToSavedPharmacy() {
             Saved Pharmacy Info
           </button>
 
-          <button class="menu-item" @click="goTo('/stocks')">View Stocks</button>
+          <button class="menu-item" @click="goTo('/stocks')">View Inventory</button>
           <button class="menu-item" @click="goTo('/settings')">Settings</button>
 
           <button class="menu-item logout" @click="logout">Log Out</button>
