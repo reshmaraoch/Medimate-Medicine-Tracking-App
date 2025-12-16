@@ -9,7 +9,12 @@ import { getAllMeds } from "@/firebase/firebase_service";
 
 const medications = ref([]);
 const loadMeds = async () => {
-   medications.value = await getAllMeds();
+    medications.value = await getAllMeds();
+    medications.value.sort((a, b) => {
+        const aInv = a.currentInventory ?? Infinity;
+        const bInv = b.currentInventory ?? Infinity;
+        return aInv - bInv;
+    });
 };
 
 
@@ -79,7 +84,7 @@ onMounted(loadMeds)
 
 .page-title {
   width: 100%;
-  max-width: 800px;
+  max-width: 1200px;
   margin-bottom: 1rem;
   font-size: 1.4rem;
   font-weight: 700;
