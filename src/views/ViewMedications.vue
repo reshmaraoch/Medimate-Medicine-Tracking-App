@@ -141,7 +141,7 @@ onMounted(loadMeds)
   border-collapse: collapse;
   margin-bottom: 1rem;
   overflow-x: auto;
-  display: block; /* enables scroll */
+  display: block;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -151,7 +151,7 @@ onMounted(loadMeds)
   padding: 0.6rem 0.75rem;
   text-align: left;
   font-size: 0.875rem;
-  white-space: nowrap; /* prevents column collapse */
+  white-space: nowrap;
 }
 
 .med-table th {

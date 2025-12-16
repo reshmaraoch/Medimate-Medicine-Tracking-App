@@ -25,7 +25,7 @@ onMounted(loadMeds)
        <div class="stocks-container">
            <h3 class="section-title">Medications</h3>
            <div class="stocks">
-                <div v-if="medications.length">
+                <template v-if="medications.length">
                     <div class="stock" v-for="med in medications" :key="med.id">
                         <div class="stock-card">
                             <div class="stock-title">
@@ -55,7 +55,7 @@ onMounted(loadMeds)
                             </div>
                         </div>
                     </div>
-                </div>
+                </template>
                 <p v-else>
                     You have no medications yet.
                 </p>
@@ -87,7 +87,7 @@ onMounted(loadMeds)
 
 .stocks-container {
   width: 100%;
-  max-width: 800px;
+  max-width: 1200px;
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -102,13 +102,13 @@ onMounted(loadMeds)
 
 .stocks {
   display: grid;
-  grid-template-columns: 1fr; /* 📱 phones */
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
 
 .stock {
-  background-color: #f1f1f1;
+  background: var(--color-bg);
   padding: 10px;
   width: 100%;
   min-height: 150px;
