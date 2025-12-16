@@ -14,7 +14,6 @@ import { db, auth } from "@/firebase_conf";
 
 const getUserID = () => {
   const uid = auth.currentUser?.uid;
-  console.log(uid);
   if (!uid) {
     throw new Error("No user logged in");
   }

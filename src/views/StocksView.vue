@@ -10,7 +10,6 @@ import { getAllMeds } from "@/firebase/firebase_service";
 const medications = ref([]);
 const loadMeds = async () => {
    medications.value = await getAllMeds();
-   console.log(medications);
 };
 
 
