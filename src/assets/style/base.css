@@ -1,8 +1,3 @@
-/* ---------------------------- */
-/* THEME 2 — PHARMA MINT        */
-/* Global light + dark mode     */
-/* ---------------------------- */
-
 :root {
   /* Backgrounds */
   --color-bg: #faf7f2;
@@ -10,13 +5,13 @@
 
   /* Text */
   --color-text: #3b3a36;
-  --color-subtle-text: #67635c;
+  --color-subtle-text: #6b6760;
 
   /* Borders */
   --color-border: #e1ddd7;
 
   /* Buttons + Accents */
-  --color-primary: #8baa91;
+  --color-primary: #2d5523;
   --color-primary-hover: #788f7e;
   --color-primary-dark: #6f8b74; /* used for “unsaved changes” */
   --color-button-dark: #2b3d2e;

@@ -292,13 +292,11 @@ function removeTime(time) {
 function markInvalidIfNonNumeric(field, event) {
   const value = event.target.value;
 
-  // allow empty (optional fields)
   if (value === "") {
     errors.value[field] = false;
     return;
   }
 
-  // allow integers or decimals (non-negative)
   const isValid = /^\d+(\.\d+)?$/.test(value);
 
   errors.value[field] = !isValid;
@@ -356,6 +354,49 @@ onMounted(async () => {
 function goBack() {
   router.push("/view-meds");
 }
+
+const scheduleDisplay = computed(() => {
+  const schedule = form.value.schedule;
+  if (!schedule || !schedule.type) return "—";
+
+  switch (schedule.type) {
+    case "Everyday":
+      return "Everyday";
+
+    case "Specific Days":
+      if (!schedule.data?.daysOfWeek?.length) return "Specific days";
+      return `Specific days (${schedule.data.daysOfWeek
+        .map(d => WEEK_DAYS.find(w => w.value === d)?.label)
+        .join(", ")})`;
+
+    case "Every Few Days":
+      return schedule.data?.interval
+        ? `Every ${schedule.data.interval} days`
+        : "Every few days";
+
+    case "Custom":
+      return schedule.data?.dates?.length
+        ? `Custom (${schedule.data.dates.join(", ")})`
+        : "Custom dates";
+
+    default:
+      return schedule.type;
+  }
+});
+const timeDisplay = computed(() => {
+  if (!form.value.times || form.value.times.length === 0) {
+    return "-";
+  }
+
+  return form.value.times
+    .map(t => {
+      const [h, m] = t.split(":").map(Number);
+      const hour = h % 12 || 12;
+      const suffix = h >= 12 ? "PM" : "AM";
+      return `${hour}:${m.toString().padStart(2, "0")} ${suffix}`;
+    })
+    .join(", ");
+});
 
 </script>
 
@@ -434,18 +475,14 @@ function goBack() {
       <h2>{{ isEditMode ? "Update Details" : "Add Details Manually" }}</h2>
 
       <form @submit.prevent="openConfirmation" class="medicine-form">
+        <h4>Medicine Details</h4>
         <div class="form-group">
           <label>Medicine Name <span class="required">*</span></label>
           <input v-model="form.medicineName" type="text" required />
         </div>
 
         <div class="form-group">
-          <label>Description</label>
-          <input v-model="form.description" type="text" placeholder="What is this for?" />
-        </div>
-
-        <div class="form-group">
-          <label>Form<span class="required">*</span></label>
+          <label>Medicine Type<span class="required">*</span></label>
           <select v-model="form.form" required>
             <option disabled value="">Select type</option>
             <option>Tablet</option>
@@ -456,17 +493,10 @@ function goBack() {
           </select>
         </div>
 
-        <!-- <div class="form-group">
-          <label>Unit</label>
-          <input v-model="form.medicineType" type="text" placeholder="e.g., Enum: pills, ml, mg, units, drops" />
-        </div> -->
-
+        <h4>Dosage & Schedule</h4>
         <div class="form-group">
-          <label>Dosage : <span>Please only enter number quantity</span></label>
-          <!-- <input v-model="form.doseQuantity" type="text" placeholder="e.g., (500) mg, (10) pills" /> -->
+          <label>Dosage :</label>
           <div class="dose-input-wrapper">
-            <!-- <input v-model.number="form.doseQuantity" type="number" min=0 placeholder="e.g.: 1"> -->
-            <!-- <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span> -->
             <input v-model="form.doseQuantity" type="text" placeholder="e.g.: 1"
               :class="{ 'input-error': errors.doseQuantity }"
               @input="markInvalidIfNonNumeric('doseQuantity', $event)" />
@@ -476,55 +506,8 @@ function goBack() {
             </small>
           </div>
         </div>
-
-        <div class="form-group">
-          <label>Inventory</label>
-          <!-- <input v-model="form.currentInventory" type="text" placeholder="e.g., 150 ml bottle or 150 pills" /> -->
-          <div class="dose-input-wrapper">
-            <input v-model="form.currentInventory" type="text" :class="{ 'input-error': errors.currentInventory }"
-              @input="markInvalidIfNonNumeric('currentInventory', $event)" />
-            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
-            <small v-if="errors.currentInventory" class="error-text">
-              Please enter Numbers >= 0 only
-            </small>
-          </div>
-        </div>
-
-        <!-- <div class="form-group"> -->
-        <!-- <label>Refil Alert</label> -->
-        <!-- <input v-model="form.refillThreshold" type="text" placeholder="e.g., Alert when stock <= 30 ml or 30 pills" /> -->
-        <!-- <div class="dose-input-wrapper"> -->
-        <!-- <input v-model="form.refillThreshold" type="text" :class="{ 'input-error': errors.refillThreshold }" -->
-        <!-- @input="markInvalidIfNonNumeric('refillThreshold', $event)" /> -->
-        <!-- <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span> -->
-        <!-- <small v-if="errors.refillThreshold" class="error-text"> -->
-        <!-- Please enter Numbers >= 0 only -->
-        <!-- </small> -->
-        <!-- </div> -->
-        <!-- </div> -->
-
-        <div class="form-group">
-          <label>
-            Refill Alert
-            <span v-if="isInventoryEntered" class="required">*</span>
-          </label>
-
-          <div class="dose-input-wrapper">
-            <input v-model="form.refillThreshold" type="text" :disabled="!isInventoryEntered"
-              :class="{ 'input-error': errors.refillThreshold }"
-              @input="markInvalidIfNonNumeric('refillThreshold', $event)" />
-            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
-          </div>
-
-          <small v-if="isInventoryEntered" class="helper-text">
-            Required when inventory is provided
-          </small>
-        </div>
-
-
         <div class="form-group">
           <label>What dose will you take? <span class="required">*</span></label>
-          <!-- <input v-model="form.take" type="text" placeholder="e.g., 1 ml per spoon or 1 pill" /> -->
           <div class="dose-input-wrapper">
             <input v-model="form.take" type="text" :class="{ 'input-error': errors.take }"
               @input="markInvalidIfNonNumeric('take', $event)" />
@@ -534,42 +517,6 @@ function goBack() {
             </small>
           </div>
         </div>
-
-        <!-- <div class="form-group"> -->
-        <!-- <label>What time/s do you take the medication?</label> -->
-        <!-- <input v-model="form.times" type="text" placeholder="e.g., 08:00, 20:00, etc " /> -->
-        <!-- </div> -->
-
-        <div class="form-group">
-          <label>What time(s) do you take the medication?</label>
-
-          <div class="time-input-row">
-            <input type="time" v-model="newTime" />
-            <button type="button" class="add-time-btn" @click="addTime">
-              + Add
-            </button>
-          </div>
-
-          <ul v-if="form.times.length" class="time-list">
-            <li v-for="time in form.times" :key="time">
-              {{ time }}
-              <button type="button" @click="removeTime(time)">✕</button>
-            </li>
-          </ul>
-        </div>
-
-        <!-- how will the object take both assigned attributes? -->
-
-        <!-- <div class="form-group"> -->
-        <!-- <label>Schedule</label> -->
-        <!-- <select v-model="form.schedule"> -->
-        <!-- <option>Everyday</option> -->
-        <!-- <option>As Needed</option> -->
-        <!-- <option>Specific Days</option> -->
-        <!-- <option>Every Few Days</option> -->
-        <!-- <option>Custom</option> -->
-        <!-- </select> -->
-        <!-- </div> -->
 
         <div class="form-group">
           <label>Schedule</label>
@@ -612,6 +559,28 @@ function goBack() {
 
         </div>
 
+        <!-- Course length text -->
+        <p v-if="courseLength" class="course-info">
+          Your course of meds runs for <strong>{{ courseLength }}</strong> days.
+        </p>
+
+        <div class="form-group">
+          <label>What time(s) do you take the medication?</label>
+
+          <div class="time-input-row">
+            <input type="time" v-model="newTime" />
+            <button type="button" class="add-time-btn" @click="addTime">
+              + Add
+            </button>
+          </div>
+
+          <ul v-if="form.times.length" class="time-list">
+            <li v-for="time in form.times" :key="time">
+              {{ time }}
+              <button type="button" @click="removeTime(time)">✕</button>
+            </li>
+          </ul>
+        </div>
 
         <div class="form-row">
           <div class="form-group">
@@ -625,18 +594,45 @@ function goBack() {
           </div>
         </div>
 
-        <!-- Course length text -->
-        <p v-if="courseLength" class="course-info">
-          Your course of meds runs for <strong>{{ courseLength }}</strong> days.
-        </p>
-
-        <!-- <div class="form-group"> -->
-        <!-- <label>Available Stock</label> -->
-        <!-- <input v-model.number="form.stock" type="number" min="0" placeholder="e.g., 30" /> -->
-        <!-- </div> -->
+        <h4>Additional Details</h4>
+        <div class="form-group">
+          <label>Description</label>
+          <input v-model="form.description" type="text" placeholder="What is this for?" />
+        </div>
+        <div class="form-group">
+          <label>Inventory</label>
+          <!-- <input v-model="form.currentInventory" type="text" placeholder="e.g., 150 ml bottle or 150 pills" /> -->
+          <div class="dose-input-wrapper">
+            <input v-model="form.currentInventory" type="text" :class="{ 'input-error': errors.currentInventory }"
+              @input="markInvalidIfNonNumeric('currentInventory', $event)" />
+            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
+            <small v-if="errors.currentInventory" class="error-text">
+              Please enter Numbers >= 0 only
+            </small>
+          </div>
+        </div>
 
         <div class="form-group">
-          <label>Expiry Date</label>
+          <label>
+            Refill Alert
+            <span v-if="isInventoryEntered" class="required">*</span>
+          </label>
+
+          <div class="dose-input-wrapper">
+            <input v-model="form.refillThreshold" type="text" :disabled="!isInventoryEntered"
+              :class="{ 'input-error': errors.refillThreshold }"
+              @input="markInvalidIfNonNumeric('refillThreshold', $event)" />
+            <span v-if="derivedUnit" class="doseUnit">{{ derivedUnit }}</span>
+          </div>
+
+          <small v-if="isInventoryEntered" class="helper-text">
+            Required when inventory is provided
+          </small>
+        </div>
+
+
+        <div class="form-group">
+          <label>Inventory Expiry Date</label>
           <input v-model="form.expiryDate" type="date" @click="openDatePicker" />
         </div>
 
@@ -657,8 +653,9 @@ function goBack() {
           <li><strong>Dosage:</strong> {{ form.doseQuantity || "—" }}</li>
           <li><strong>What dose will you take: </strong> {{ form.take || "—" }}</li>
           <li><strong>Type:</strong> {{ form.form }}</li>
-          <li><strong>Schedule:</strong> {{ form.schedule || "—" }}</li>
-          <li><strong>Time:</strong> {{ form.times || "—" }}</li>
+          <li><strong>Schedule:</strong> {{ scheduleDisplay }}</li>
+          <li><strong>Time:</strong> {{ timeDisplay }}</li>
+
           <li>
             <strong>Duration:</strong>
             {{ form.startDate || "—" }} → {{ form.endDate || "—" }}
@@ -804,7 +801,7 @@ function goBack() {
   font-size: 14px;
   font-weight: 500;
   margin-bottom: 4px;
-  color: #374151;
+  color: var(--color-primary);
 }
 
 .form-group input,
@@ -868,8 +865,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* Button */
 .submit-button {
   margin-top: 8px;
-  background: var(--color-primary);
-  color: #fff;
+  background: var(--color-bg);
+  color: var(--color-primary);
   border: none;
   padding: 11px 16px;
   border-radius: var(--radius-pill);
@@ -878,7 +875,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .submit-button:hover {
-  background: var(--color-primary-hover);
+  /* background: var(--color-primary-hover); */
+  background: var(--color-primary);
+  color: var(--color-border);
+  border-color: var(--color-primary);
 }
 
 /* Modal */
@@ -913,7 +913,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   padding: 0;
   margin: 10px 0 18px;
   font-size: 14px;
-  color: #374151;
+  color: var(--color-primary);
 }
 
 .confirm-list li {
@@ -937,17 +937,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .btn-secondary {
-  background: #e5e7eb;
-  color: #111827;
+  background: var(--color-bg);
+  color: var(--color-primary);
 }
 
 .btn-secondary:hover {
-  background: #d1d5db;
+  background: var(--color-text);
+  ;
 }
 
 .btn-primary {
-  background: var(--color-primary);
-  color: white;
+  background: var(--color-bg);
+  color: var(--color-primary);
 }
 
 .btn-primary:hover {
@@ -1022,24 +1023,37 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   transform: translateY(0);
 }
 
-.weekday-grod {
+.weekday-grid {
   display: grid;
-  grid-template-columns: repet(7, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .weekday-btn {
-  padding: 6px 0;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
+  width: 100%;
+  height: 36px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 8px;
+  border: 2px solid var(--color-border);
+  color: var(--color-text);
   background: transparent;
-  cursor: pointer;
+
   font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
+
 
 .weekday-btn.active {
   background: var(--color-primary);
-  color: white;
+  color: var(--color-border);
   border-color: var(--color-primary);
 }
 
@@ -1066,7 +1080,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border-radius: var(--radius-pill);
   border: none;
   background: var(--color-primary);
-  color: white;
+  color: var(--color-border);
+  border-color: var(--color-primary);
   cursor: pointer;
   font-size: 13px;
 }
