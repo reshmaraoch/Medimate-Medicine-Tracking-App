@@ -10,14 +10,11 @@ import { getAllMeds } from "@/firebase/firebase_service";
 const medications = ref([]);
 const loadMeds = async () => {
     medications.value = await getAllMeds();
-    medications.value.sort((a, b) => {
-        const aInv = a.currentInventory ?? Infinity;
-        const bInv = b.currentInventory ?? Infinity;
-        return aInv - bInv;
-    });
-};
-
-
+    // remove any non numerical values and sort in ascending order
+    medications.value = medications.value
+    .filter(med => Number.isInteger(med.currentInventory))
+    .sort((a, b) => a.currentInventory - b.currentInventory)
+    }
 onMounted(loadMeds)
 
 
@@ -32,7 +29,7 @@ onMounted(loadMeds)
            <div class="stocks">
                 <template v-if="medications.length">
                     <div v-for="med in medications" :key="med.id">
-                        <div v-if="med.currentInventory" class="stock-card">
+                        <div class="stock-card">
                             <div class="stock-title">
                                 <div>
                                     <p>{{ med.medicineName }}</p>
