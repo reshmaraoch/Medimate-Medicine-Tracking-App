@@ -17,7 +17,7 @@ const route = useRoute();
 const isEditMode = computed(() => !!route.params.id);
 const editMedId = computed(() => route.params.id || null);
 
-const { ocrResults, loading: ocrLoading, error: ocrError, scanImage } = usePrescriptionOCR();
+const { ocrResults, loading: ocrLoading, error: ocrError, noResults, scanImage } = usePrescriptionOCR();
 
 const fileInput = ref(null);
 const cameraInput = ref(null);
@@ -510,6 +510,11 @@ async function captureFromCamera() {
 
 
         <p v-if="ocrLoading">Scanning prescription…</p>
+        <p v-if="noResults && !ocrLoading" class="ocr-warning">
+          We couldn’t recognize medication details from this image.
+          Try better lighting, clearer focus, or enter details manually.
+        </p>
+
         <p v-if="ocrError" class="error">{{ ocrError }}</p>
 
         <!-- OCR Cards -->
@@ -1268,5 +1273,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
   /* black */
   opacity: 1;
+}
+
+.ocr-warning {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: #ca8a04;
+  /* amber */
 }
 </style>

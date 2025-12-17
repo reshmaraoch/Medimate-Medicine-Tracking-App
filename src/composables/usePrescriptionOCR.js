@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { ref } from "vue";
 import {
   parseUniversalPrescription,
@@ -37,36 +38,60 @@ export function usePrescriptionOCR() {
   //       loading.value = false;
   //     }
   //   }
-  async function scanImage(image) {
+  // async function scanImage(image) {
+  //   loading.value = true;
+  //   error.value = null;
+  //   ocrResults.value = [];
+
+  //   try {
+  //     const text = await runOCROnImage(image);
+
+  //     let parsed = parseUniversalPrescription(text);
+
+  //     // Fallback if needed
+  //     if ((!parsed || !Array.isArray(parsed.medications)) && text) {
+  //       parsed = fallbackParseLinesToMeds(text);
+  //     }
+
+  //     // 🔑 NORMALIZATION STEP
+  //     const medsArray = Array.isArray(parsed)
+  //       ? parsed
+  //       : parsed?.medications || [];
+
+  //     ocrResults.value = medsArray.map((m, index) => ({
+  //       id: index,
+  //       name: m.name || "",
+  //       dosage: m.dosage || "",
+  //       schedule: m.schedule || "",
+  //       raw: m,
+  //     }));
+  //   } catch (e) {
+  //     console.error(e);
+  //     error.value = "OCR failed. Please try again.";
+  //   } finally {
+  //     loading.value = false;
+  //   }
+  // }
+  const noResults = ref(false);
+
+  async function scanImage(source) {
     loading.value = true;
     error.value = null;
+    noResults.value = false;
     ocrResults.value = [];
 
     try {
-      const text = await runOCROnImage(image);
+      const rawText = await runOCROnImage(source);
+      const parsed = parseUniversalPrescription(rawText);
 
-      let parsed = parseUniversalPrescription(text);
-
-      // Fallback if needed
-      if ((!parsed || !Array.isArray(parsed.medications)) && text) {
-        parsed = fallbackParseLinesToMeds(text);
+      if (!parsed.medications || parsed.medications.length === 0) {
+        noResults.value = true;
+        return;
       }
 
-      // 🔑 NORMALIZATION STEP
-      const medsArray = Array.isArray(parsed)
-        ? parsed
-        : parsed?.medications || [];
-
-      ocrResults.value = medsArray.map((m, index) => ({
-        id: index,
-        name: m.name || "",
-        dosage: m.dosage || "",
-        schedule: m.schedule || "",
-        raw: m,
-      }));
+      ocrResults.value = parsed.medications;
     } catch (e) {
-      console.error(e);
-      error.value = "OCR failed. Please try again.";
+      error.value = "Failed to scan prescription.";
     } finally {
       loading.value = false;
     }
@@ -80,6 +105,7 @@ export function usePrescriptionOCR() {
     ocrResults,
     loading,
     error,
+    noResults,
     scanImage,
     clearResults,
   };
