@@ -811,6 +811,7 @@ const timeDisplay = computed(() => {
   border: 1px solid #d1d5db;
   font-size: 14px;
   background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .form-group input:focus,
