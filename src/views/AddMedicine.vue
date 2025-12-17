@@ -432,7 +432,9 @@ const timeDisplay = computed(() => {
 
 
           <!-- One input -->
-          <input ref="fileInput" type="file" accept="image/*" hidden @change="handleImageSelected" />
+          <!-- <input ref="fileInput" type="file" accept="image/*" hidden @change="handleImageSelected" /> -->
+          <input ref="fileInput" type="file" accept="image/*" capture="environment" hidden
+            @change="handleImageSelected" />
         </div>
 
 
