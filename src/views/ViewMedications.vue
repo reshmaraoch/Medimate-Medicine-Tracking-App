@@ -70,7 +70,7 @@ onMounted(loadMeds)
             <td>{{ med.medicineName }}</td>
             <td>{{ med.doseQuantity || '—' }}</td>
             <td>{{ med.form }}</td>
-            <td>{{ med.scheduleType }}</td>
+            <td>{{ med.schedule.type }}</td>
             <td>{{ med.startDate || '—' }}</td>
             <td>{{ med.endDate || '—' }}</td>
             <td>{{ med.currentInventory ?? '—' }}</td>
