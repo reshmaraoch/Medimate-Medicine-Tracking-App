@@ -1,8 +1,8 @@
 # MediMate
 
-A personal medication management app that helps users track prescriptions, dosages, and schedules — all from their phone or browser.
+A personal medication management app that helps users track prescriptions, dosages, and schedules all from your phone or browser.
 
-* App Link: https://project2-e9097.web.app
+App Link: https://project2-e9097.web.app
 
 ## About
 
